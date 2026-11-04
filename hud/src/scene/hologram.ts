@@ -1,413 +1,758 @@
-// The full HUD scene: server-room corridor, purple haze, light beam,
-// glowing platform with rings, data streams and the hologram bust.
-import * as THREE from "three";
-import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
-import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
-import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
-import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
-import { HologramBust, glowTexture, mulberry32 } from "./head";
-import { beamMaterial, discMaterial, holoUniforms, streamMaterial } from "./materials";
+// The HUD scene in Babylon.js: a scanned head rendered as a hologram on a glowing
+// platform, in a purple server-room corridor with haze, god rays and a mirror floor.
+import { Engine } from "@babylonjs/core/Engines/engine";
+import { Constants } from "@babylonjs/core/Engines/constants";
+import { Scene } from "@babylonjs/core/scene";
+import { Quaternion, Vector2, Vector3, Vector4 } from "@babylonjs/core/Maths/math.vector";
+import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
+import { Plane } from "@babylonjs/core/Maths/math.plane";
+import { FreeCamera } from "@babylonjs/core/Cameras/freeCamera";
+import { HemisphericLight } from "@babylonjs/core/Lights/hemisphericLight";
+import { PointLight } from "@babylonjs/core/Lights/pointLight";
+import { Mesh } from "@babylonjs/core/Meshes/mesh";
+import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
+import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
+import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
+import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
+import { ShaderMaterial } from "@babylonjs/core/Materials/shaderMaterial";
+import { ImageProcessingConfiguration } from "@babylonjs/core/Materials/imageProcessingConfiguration";
+import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
+import { MirrorTexture } from "@babylonjs/core/Materials/Textures/mirrorTexture";
+import { Texture } from "@babylonjs/core/Materials/Textures/texture";
+import { GlowLayer } from "@babylonjs/core/Layers/glowLayer";
+import { DefaultRenderingPipeline } from "@babylonjs/core/PostProcesses/RenderPipeline/Pipelines/defaultRenderingPipeline";
+import { VolumetricLightScatteringPostProcess } from "@babylonjs/core/PostProcesses/volumetricLightScatteringPostProcess";
+import { PostProcess } from "@babylonjs/core/PostProcesses/postProcess";
+import { ParticleSystem } from "@babylonjs/core/Particles/particleSystem";
+import "@babylonjs/core/Particles/particleSystemComponent";
+import "@babylonjs/core/Layers/effectLayerSceneComponent";
+import "@babylonjs/core/Rendering/depthRendererSceneComponent";
+import "@babylonjs/core/Rendering/edgesRenderer";
+import { ImportMeshAsync } from "@babylonjs/core/Loading/sceneLoader";
+import "@babylonjs/loaders/glTF/2.0";
+import "./shaders";
 
 export type HoloState = "offline" | "idle" | "listening" | "thinking" | "speaking";
 
-const COLORS: Record<HoloState, THREE.Color> = {
-  offline: new THREE.Color(0x2a4a66),
-  idle: new THREE.Color(0x4fd8ff),
-  listening: new THREE.Color(0x7ff0ff),
-  thinking: new THREE.Color(0x8a7dff),
-  speaking: new THREE.Color(0x66e6ff),
+const COLORS: Record<HoloState, Color3> = {
+  offline: Color3.FromHexString("#2a4a66"),
+  idle: Color3.FromHexString("#4fd8ff"),
+  listening: Color3.FromHexString("#86f2ff"),
+  thinking: Color3.FromHexString("#8a7dff"),
+  speaking: Color3.FromHexString("#66e6ff"),
+};
+const INTENSITY: Record<HoloState, number> = { offline: 0.3, idle: 1, listening: 1.2, thinking: 1.05, speaking: 1.3 };
+
+/** Model-space landmarks of models/head.glb (Lee Perry-Smith scan, y-up, face toward +z). */
+const HEAD = {
+  url: "models/head.glb",
+  height: 8, // model units from chest to crown
+  mouthY: 0.45,
+  chinY: -0.5,
+  faceZ: 1.3,
+  mouthHalfWidth: 0.8,
+  chestY: -2.2,
+  eyes: [new Vector3(-0.58, 1.55, 2.1), new Vector3(0.58, 1.55, 2.1)],
 };
 
+const FLOOR_Y = -1.2;
+const QUALITY_KEY = "jarvis.hud.quality";
+const MAX_TIER = 3;
+
+function safeGet(key: string): string | null {
+  try {
+    // ?quality=high starts over at full quality.
+    if (new URLSearchParams(location.search).get("quality") === "high") localStorage.removeItem(key);
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function safeSet(key: string, value: string) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    /* storage unavailable: keep the tier for this session only */
+  }
+}
+
+function mulberry32(seed: number) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
 export class HoloScene {
-  private renderer: THREE.WebGLRenderer;
-  private composer: EffectComposer;
-  private bloom: UnrealBloomPass;
-  private scene = new THREE.Scene();
-  private camera: THREE.PerspectiveCamera;
-  private bust = new HologramBust();
-  private hologram = new THREE.Group();
-  private rings: THREE.Mesh[] = [];
-  private emitter!: THREE.Mesh;
-  private streams!: THREE.LineSegments;
-  private smoke!: THREE.Points;
-  private smokeVel: Float32Array = new Float32Array(0);
-  private panel = new THREE.Group();
-  private leds!: THREE.InstancedMesh;
-  private ledPhase: Float32Array = new Float32Array(0);
-  private ledBase: THREE.Color[] = [];
-  private ledTick = -1;
-  private tmpColor = new THREE.Color();
-  private clock = new THREE.Clock();
+  private engine: Engine;
+  private scene: Scene;
+  private camera: FreeCamera;
+  private glow: GlowLayer;
+  private holo: TransformNode;
+  private bust: TransformNode;
+  private headMat: ShaderMaterial;
+  private streamMat!: ShaderMaterial;
+  private panelMat!: ShaderMaterial;
+  private beamMat!: ShaderMaterial;
+  private rings: Mesh[] = [];
+  private emitterMat!: StandardMaterial;
+  private eyeMat!: StandardMaterial;
+  private eyes: Mesh[] = [];
+  private ledTex!: DynamicTexture;
+  private ledSeeds: number[] = [];
+  private sparkles!: ParticleSystem;
+  private finish!: PostProcess;
+  private mirror!: MirrorTexture;
+  private floorMat!: StandardMaterial;
+  private vls: VolumetricLightScatteringPostProcess | null = null;
+  private pipe!: DefaultRenderingPipeline;
+  /** Quality tier: 0 = full, each step drops a costly effect (see degrade()). */
+  private tier = 0;
+  private fpsWindow = { frames: 0, time: 0, warmup: 4 };
+
   private state: HoloState = "offline";
   private color = COLORS.offline.clone();
-  private intensity = 0.4;
-  private pointer = new THREE.Vector2();
+  private intensity = 0.3;
   private level = 0;
   private jaw = 0;
+  private glitch = 0;
+  private time = 0;
+  private pointer = new Vector2();
 
   /** Audio drivers set by the app each frame. */
   micLevel = 0;
   mouthLevel = 0;
+  /** Dev-only: fixed yaw for inspecting the model. */
+  debugYaw: number | null = null;
 
   constructor(canvas: HTMLCanvasElement) {
-    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
-    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 0.95;
-    this.scene.background = new THREE.Color(0x05040d);
-    this.scene.fog = new THREE.FogExp2(0x0c0820, 0.05);
+    this.engine = new Engine(canvas, true, { stencil: true, preserveDrawingBuffer: false, powerPreference: "high-performance" }, false);
+    // Integrated GPUs (e.g. Intel UHD 620): cap the render resolution.
+    this.engine.setHardwareScalingLevel(1 / Math.min(window.devicePixelRatio || 1, 1.25));
+    const scene = (this.scene = new Scene(this.engine));
+    scene.clearColor = new Color4(0.02, 0.016, 0.05, 1);
+    scene.fogMode = Scene.FOGMODE_EXP2;
+    scene.fogDensity = 0.05;
+    scene.fogColor = Color3.FromHexString("#0c0820");
+    scene.skipPointerMovePicking = true;
+    if (import.meta.env.DEV) {
+      (window as any).__scene = scene;
+      (window as any).__holo = this;
+    }
 
-    this.camera = new THREE.PerspectiveCamera(42, 1, 0.1, 100);
-    this.camera.position.set(0, 0.7, 6.8);
+    this.camera = new FreeCamera("cam", new Vector3(0, 0.7, -6.8), scene);
+    this.camera.fov = 0.74;
+    this.camera.minZ = 0.1;
+    this.camera.setTarget(new Vector3(0, 0.45, 0));
+
+    this.holo = new TransformNode("hologram", scene);
+    this.bust = new TransformNode("bust", scene);
+    this.holo.position.y = 1.15;
+    this.bust.parent = this.holo;
+
+    this.headMat = this.createHeadMaterial();
+    this.glow = new GlowLayer("glow", scene, { mainTextureRatio: 0.5, blurKernelSize: 48 });
+    this.glow.intensity = 0.85;
 
     this.buildRoom();
     this.buildPlatform();
-    this.buildHologram();
-    this.buildSmoke();
-
-    this.composer = new EffectComposer(this.renderer);
-    this.composer.addPass(new RenderPass(this.scene, this.camera));
-    this.bloom = new UnrealBloomPass(new THREE.Vector2(512, 512), 0.8, 0.45, 0.22);
-    this.composer.addPass(this.bloom);
-    this.composer.addPass(new OutputPass());
+    this.buildHologramExtras();
+    this.buildParticles();
+    this.buildFloor();
+    this.buildPost();
+    void this.loadHead();
 
     window.addEventListener("resize", () => this.resize());
     window.addEventListener("pointermove", (e) => {
       this.pointer.set((e.clientX / window.innerWidth) * 2 - 1, (e.clientY / window.innerHeight) * 2 - 1);
     });
     this.resize();
+    const saved = Number(safeGet(QUALITY_KEY));
+    for (let i = 0; i < Math.min(saved || 0, MAX_TIER); i++) this.degrade();
   }
 
   setState(state: HoloState) {
+    if (state !== this.state && (state === "offline" || this.state === "offline")) this.glitch = 1;
+    else if (state !== this.state) this.glitch = Math.max(this.glitch, 0.45);
     this.state = state;
   }
 
   start() {
-    const loop = () => {
-      this.frame();
-      requestAnimationFrame(loop);
-    };
-    requestAnimationFrame(loop);
+    this.engine.runRenderLoop(() => {
+      const dt = this.engine.getDeltaTime() / 1000;
+      this.update(Math.min(dt, 0.05));
+      this.scene.render();
+      this.watchFps(dt);
+    });
+  }
+
+  /**
+   * Adaptive quality for integrated GPUs: when the frame rate stays below ~40 fps, switch off
+   * the most expensive effect, wait, and measure again. The chosen tier is remembered.
+   */
+  private watchFps(dt: number) {
+    const w = this.fpsWindow;
+    if (this.tier >= MAX_TIER || document.hidden) return;
+    if (w.warmup > 0) { w.warmup -= dt; return; }
+    w.frames++;
+    w.time += dt;
+    if (w.time < 2.5) return;
+    const fps = w.frames / w.time;
+    w.frames = 0;
+    w.time = 0;
+    if (fps < 40) {
+      this.degrade();
+      safeSet(QUALITY_KEY, String(this.tier));
+      w.warmup = 1.5;
+    }
+  }
+
+  private degrade() {
+    this.tier++;
+    switch (this.tier) {
+      case 1: // floor reflection and film grain
+        this.floorMat.reflectionTexture = null;
+        this.mirror.dispose();
+        this.pipe.grainEnabled = false;
+        this.pipe.chromaticAberrationEnabled = false;
+        break;
+      case 2: // god rays and the wide glow blur
+        this.vls?.dispose(this.camera);
+        this.vls = null;
+        this.glow.blurKernelSize = 24;
+        this.pipe.bloomKernel = 24;
+        break;
+      case 3: // render fewer pixels
+        this.engine.setHardwareScalingLevel(this.engine.getHardwareScalingLevel() * 1.4);
+        break;
+    }
+    console.info(`HUD-kwaliteit verlaagd naar niveau ${this.tier}`);
   }
 
   private resize() {
-    const w = window.innerWidth;
-    const h = window.innerHeight;
-    this.renderer.setSize(w, h, false);
-    this.composer.setSize(w, h);
-    // Half-resolution bloom keeps integrated GPUs (e.g. Intel UHD 620) smooth.
-    this.bloom.resolution.set(w / 2, h / 2);
-    this.camera.aspect = w / h;
-    // Portrait screens: pull back so the bust stays in frame.
-    this.camera.position.z = w / h < 1 ? 6.8 / Math.max(0.55, w / h) : 6.8;
-    this.camera.updateProjectionMatrix();
+    this.engine.resize();
+    const aspect = window.innerWidth / window.innerHeight;
+    this.camera.position.z = aspect < 1 ? -6.8 / Math.max(0.55, aspect) : -6.8;
   }
 
-  // ---------------------------------------------------------------- room
+  // ------------------------------------------------------------ materials
+  private createHeadMaterial(): ShaderMaterial {
+    const m = new ShaderMaterial("holoHead", this.scene, { vertex: "holoHead", fragment: "holoHead" }, {
+      attributes: ["position", "normal"],
+      uniforms: ["world", "viewProjection", "uJaw", "uMouth", "uColor", "uIntensity", "uTime", "uScanY", "uFlicker", "cameraPosition", "uGrid", "uChestY"],
+      needAlphaBlending: true,
+    });
+    m.alphaMode = Constants.ALPHA_ADD;
+    m.backFaceCulling = true;
+    // Depth pre-pass (with depth writes on, or the pre-pass writes nothing): only the nearest surface adds light, so the mouth cavity and other
+    // inner geometry of the scan don't shine through the face.
+    m.needDepthPrePass = true;
+    m.setVector4("uMouth", new Vector4(HEAD.mouthY, HEAD.chinY, HEAD.faceZ, HEAD.mouthHalfWidth));
+    m.setVector2("uGrid", new Vector2(5.2, 72));
+    m.setFloat("uChestY", HEAD.chestY);
+    m.setFloat("uJaw", 0);
+    m.setFloat("uScanY", -10);
+    m.setFloat("uFlicker", 0);
+    return m;
+  }
+
+  private shader(name: string, uniforms: string[]): ShaderMaterial {
+    const m = new ShaderMaterial(name, this.scene, { vertex: name, fragment: name }, {
+      attributes: ["position", "uv"],
+      uniforms: ["worldViewProjection", ...uniforms],
+      needAlphaBlending: true,
+    });
+    m.alphaMode = Constants.ALPHA_ADD;
+    m.disableDepthWrite = true;
+    m.backFaceCulling = false;
+    return m;
+  }
+
+  // ----------------------------------------------------------------- head
+  private async loadHead() {
+    try {
+      const result = await ImportMeshAsync(HEAD.url, this.scene);
+      const meshes = result.meshes.filter((m): m is Mesh => m instanceof Mesh && m.getTotalVertices() > 0);
+      const root = result.meshes[0];
+      root.parent = this.bust;
+      // Mirror z (the loader's handedness flip) so the face (+z in the file) looks at the camera (-z).
+      root.rotationQuaternion = null;
+      root.rotation.set(0, 0, 0);
+      root.scaling.set(1, 1, -1);
+      const s = 2.45 / HEAD.height;
+      this.bust.scaling.setAll(s);
+      this.bust.position.y = -0.2;
+      for (const mesh of meshes) {
+        mesh.material = this.headMat;
+        // Keep the head out of the glow layer so its grid lines stay crisp.
+        this.glow.addExcludedMesh(mesh);
+        this.mirror?.renderList?.push(mesh);
+      }
+      this.addEyes(root);
+    } catch (err) {
+      console.warn("Hoofdmodel niet geladen, val terug op een eenvoudige vorm", err);
+      const head = MeshBuilder.CreateSphere("fallbackHead", { diameterX: 3.1, diameterY: 4, diameterZ: 3.6, segments: 48 }, this.scene);
+      head.parent = this.bust;
+      head.position.y = 1.6;
+      head.scaling.z = -1;
+      const chest = MeshBuilder.CreateCylinder("fallbackChest", { diameterTop: 2.2, diameterBottom: 8.4, height: 2.6, tessellation: 32 }, this.scene);
+      chest.parent = this.bust;
+      chest.position.y = -2.6;
+      this.bust.scaling.setAll(2.45 / HEAD.height);
+      this.bust.position.y = -0.2;
+      for (const m of [head, chest]) {
+        m.material = this.headMat;
+        this.glow.addExcludedMesh(m);
+      }
+    }
+  }
+
+  private addEyes(parent: TransformNode) {
+    this.eyeMat = new StandardMaterial("eye", this.scene);
+    this.eyeMat.disableLighting = true;
+    this.eyeMat.emissiveColor = Color3.FromHexString("#c8f6ff");
+    this.eyeMat.alpha = 0.9;
+    for (const p of HEAD.eyes) {
+      const eye = MeshBuilder.CreateSphere("eye", { diameterX: 0.27, diameterY: 0.15, diameterZ: 0.1, segments: 10 }, this.scene);
+      eye.material = this.eyeMat;
+      eye.parent = parent;
+      eye.position.copyFrom(p);
+      this.eyes.push(eye);
+    }
+  }
+
+  // ----------------------------------------------------------------- room
   private buildRoom() {
+    const scene = this.scene;
     const rand = mulberry32(42);
-    const rackMat = new THREE.MeshStandardMaterial({ color: 0x0b0d1c, metalness: 0.7, roughness: 0.45 });
-    const frameMat = new THREE.MeshStandardMaterial({ color: 0x1a1d3a, metalness: 0.9, roughness: 0.3 });
-    const ledGeo = new THREE.PlaneGeometry(0.08, 0.025);
-    const ledMat = new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false });
-    const ledCount = 900;
-    this.leds = new THREE.InstancedMesh(ledGeo, ledMat, ledCount);
-    this.ledPhase = new Float32Array(ledCount);
-    let led = 0;
-    const m = new THREE.Matrix4();
-    const q = new THREE.Quaternion();
-    const palette = [0xffa040, 0x9a6bff, 0x4fb8ff, 0xffc070, 0x7a5cff];
+
+    new HemisphericLight("amb", new Vector3(0, 1, 0), scene).intensity = 0.25;
+    const purple = new PointLight("purple", new Vector3(3.2, 2.8, 1), scene);
+    purple.diffuse = Color3.FromHexString("#9b5cff");
+    purple.intensity = 1.6;
+    purple.range = 12;
+    const cyan = new PointLight("cyan", new Vector3(0, 0.2, -0.8), scene);
+    cyan.diffuse = Color3.FromHexString("#3fb8ff");
+    cyan.intensity = 1.4;
+    cyan.range = 8;
+    const back = new PointLight("back", new Vector3(-2.5, 2.5, 7), scene);
+    back.diffuse = Color3.FromHexString("#5a3cff");
+    back.intensity = 1.1;
+    back.range = 14;
+
+    // Rack faces share one LED texture that we redraw to make lights blink.
+    this.ledTex = new DynamicTexture("leds", { width: 256, height: 512 }, scene, false);
+    for (let i = 0; i < 140; i++) this.ledSeeds.push(rand());
+    this.drawLeds(0);
+
+    const rackMat = new StandardMaterial("rack", scene);
+    rackMat.diffuseColor = Color3.FromHexString("#0b0d1c");
+    rackMat.specularColor = new Color3(0.25, 0.25, 0.4);
+    const faceMat = new StandardMaterial("rackFace", scene);
+    faceMat.diffuseColor = Color3.FromHexString("#06070f");
+    faceMat.emissiveTexture = this.ledTex;
+    faceMat.specularColor = new Color3(0.3, 0.3, 0.5);
+    const trimMat = new StandardMaterial("trim", scene);
+    trimMat.diffuseColor = Color3.FromHexString("#1a1d3a");
+    trimMat.specularColor = new Color3(0.6, 0.6, 0.9);
 
     for (const side of [-1, 1]) {
       for (let i = 0; i < 6; i++) {
-        const z = 1.5 - i * 2.1;
-        const rack = new THREE.Mesh(new THREE.BoxGeometry(1.1, 4.4, 1.9), rackMat);
+        const z = -1.5 + i * 2.1;
+        const rack = MeshBuilder.CreateBox("rack", { width: 1.1, height: 4.4, depth: 1.95 }, scene);
         rack.position.set(side * 4.3, 1.0, z);
-        this.scene.add(rack);
-        const trim = new THREE.Mesh(new THREE.BoxGeometry(0.06, 4.4, 0.06), frameMat);
-        trim.position.set(side * 3.73, 1.0, z + 0.93);
-        this.scene.add(trim);
-        // LEDs on the corridor-facing side.
-        q.setFromEuler(new THREE.Euler(0, -side * Math.PI / 2, 0));
-        for (let k = 0; k < 70 && led < ledCount; k++) {
-          const y = -0.9 + rand() * 3.8;
-          const zz = z - 0.8 + rand() * 1.6;
-          m.compose(new THREE.Vector3(side * 3.74, y, zz), q, new THREE.Vector3(1, 1, 1));
-          this.leds.setMatrixAt(led, m);
-          const base = new THREE.Color(palette[Math.floor(rand() * palette.length)]);
-          this.ledBase[led] = base;
-          this.leds.setColorAt(led, base);
-          this.ledPhase[led] = rand() * 100;
-          led++;
-        }
+        rack.material = rackMat;
+        const face = MeshBuilder.CreatePlane("rackFace", { width: 1.85, height: 4.2 }, scene);
+        face.position.set(side * 3.74, 1.0, z);
+        face.rotation.y = side * Math.PI / 2;
+        face.material = faceMat;
+        // Vary which part of the LED sheet each rack shows.
+        if (i % 2) face.scaling.x = -1;
+        const trim = MeshBuilder.CreateBox("trim", { width: 0.06, height: 4.4, depth: 0.06 }, scene);
+        trim.position.set(side * 3.73, 1.0, z - 0.97);
+        trim.material = trimMat;
       }
-      // Purple strip light along the racks.
-      const strip = new THREE.Mesh(
-        new THREE.BoxGeometry(0.03, 0.03, 13),
-        new THREE.MeshBasicMaterial({ color: 0x6a44d8, toneMapped: false }),
-      );
-      strip.position.set(side * 3.7, 3.1, -3.5);
-      this.scene.add(strip);
+      const strip = MeshBuilder.CreateBox("strip", { width: 0.03, height: 0.03, depth: 13 }, scene);
+      strip.position.set(side * 3.7, 3.1, 3.5);
+      const stripMat = new StandardMaterial("strip", scene);
+      stripMat.disableLighting = true;
+      stripMat.emissiveColor = Color3.FromHexString("#6a44d8");
+      strip.material = stripMat;
     }
-    this.leds.count = led;
-    this.scene.add(this.leds);
 
-    // Back wall and ceiling beams.
-    const wall = new THREE.Mesh(new THREE.PlaneGeometry(14, 8), new THREE.MeshStandardMaterial({ color: 0x080816, roughness: 0.9 }));
-    wall.position.set(0, 1.5, -11);
-    this.scene.add(wall);
+    const wall = MeshBuilder.CreatePlane("wall", { width: 14, height: 8 }, scene);
+    wall.position.set(0, 1.5, 11);
+    const wallMat = new StandardMaterial("wall", scene);
+    wallMat.diffuseColor = Color3.FromHexString("#080816");
+    wallMat.specularColor = Color3.Black();
+    wall.material = wallMat;
     for (let i = 0; i < 6; i++) {
-      const beam = new THREE.Mesh(new THREE.BoxGeometry(8.6, 0.12, 0.25), frameMat);
-      beam.position.set(0, 3.4, 1 - i * 2.4);
-      this.scene.add(beam);
+      const beam = MeshBuilder.CreateBox("beam", { width: 8.6, height: 0.12, depth: 0.25 }, scene);
+      beam.position.set(0, 3.4, -1 + i * 2.4);
+      beam.material = trimMat;
     }
 
-    // Glossy dark floor with glowing seams.
-    const floor = new THREE.Mesh(
-      new THREE.PlaneGeometry(14, 26),
-      new THREE.MeshStandardMaterial({ color: 0x070814, metalness: 0.85, roughness: 0.25 }),
-    );
-    floor.rotation.x = -Math.PI / 2;
-    floor.position.set(0, -1.2, -4);
-    this.scene.add(floor);
-    const seams: number[] = [];
-    for (let x = -3; x <= 3; x += 1.5) seams.push(x, -1.19, 4, x, -1.19, -12);
-    for (let z = 4; z >= -12; z -= 1.5) seams.push(-3.6, -1.19, z, 3.6, -1.19, z);
-    const seamGeo = new THREE.BufferGeometry().setAttribute("position", new THREE.Float32BufferAttribute(seams, 3));
-    this.scene.add(
-      new THREE.LineSegments(seamGeo, new THREE.LineBasicMaterial({ color: 0x3a3a8a, transparent: true, opacity: 0.45 })),
-    );
+    // Spotlight from the upper right: a lamp that casts god rays plus a soft cone.
+    const lampPos = new Vector3(3.65, 2.65, 0.2);
+    const lamp = MeshBuilder.CreateSphere("lamp", { diameter: 0.28, segments: 12 }, scene);
+    lamp.position.copyFrom(lampPos);
+    const lampMat = new StandardMaterial("lamp", scene);
+    lampMat.disableLighting = true;
+    lampMat.emissiveColor = Color3.FromHexString("#e2d4ff");
+    lamp.material = lampMat;
+    this.lampMesh = lamp;
 
-    // Lighting.
-    this.scene.add(new THREE.AmbientLight(0x1c1640, 0.8));
-    const purple = new THREE.PointLight(0x9b5cff, 12, 12, 1.8);
-    purple.position.set(3.2, 2.8, -1);
-    this.scene.add(purple);
-    const cyan = new THREE.PointLight(0x3fb8ff, 18, 9, 1.8);
-    cyan.position.set(0, 0.2, 0.8);
-    this.scene.add(cyan);
-    const back = new THREE.PointLight(0x5a3cff, 8, 14, 1.6);
-    back.position.set(-2.5, 2.5, -7);
-    this.scene.add(back);
-
-    // Purple spotlight beam from the upper right, like the reference.
-    const cone = new THREE.Mesh(new THREE.ConeGeometry(1.5, 7, 48, 1, true), beamMaterial(0xa070ff));
-    cone.geometry.translate(0, -3.5, 0);
-    cone.position.set(3.65, 2.65, -0.2);
-    cone.lookAt(new THREE.Vector3(-0.8, 0.1, 0.5));
-    cone.rotateX(-Math.PI / 2);
-    this.scene.add(cone);
-    const lamp = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture(), color: 0xd8c8ff, blending: THREE.AdditiveBlending, depthWrite: false }));
-    lamp.position.copy(cone.position);
-    lamp.scale.setScalar(0.35);
-    this.scene.add(lamp);
+    this.beamMat = this.shader("holoBeam", ["uColor", "uTime"]);
+    this.beamMat.setColor3("uColor", Color3.FromHexString("#a070ff"));
+    const cone = MeshBuilder.CreateCylinder("beam", { height: 5, diameterTop: 0.05, diameterBottom: 1.8, tessellation: 48, cap: Mesh.NO_CAP }, scene);
+    cone.material = this.beamMat;
+    // Point the cone from the lamp toward the hologram.
+    const target = new Vector3(-0.6, 0.4, 1.2);
+    const dir = target.subtract(lampPos).normalize();
+    cone.position = lampPos.add(dir.scale(2.5));
+    // Local +y (the narrow end) points back at the lamp.
+    cone.rotationQuaternion = new Quaternion();
+    Quaternion.FromUnitVectorsToRef(Vector3.Up(), dir.negate(), cone.rotationQuaternion);
+    this.glow.addExcludedMesh(cone);
   }
 
-  // ------------------------------------------------------------ platform
-  private buildPlatform() {
-    const base = new THREE.Mesh(
-      new THREE.BoxGeometry(3.6, 0.25, 2.6),
-      new THREE.MeshStandardMaterial({ color: 0x0c0f22, metalness: 0.9, roughness: 0.3 }),
-    );
-    base.position.set(0, -0.97, 0);
-    this.scene.add(base);
-    const edge = new THREE.LineSegments(
-      new THREE.EdgesGeometry(base.geometry),
-      new THREE.LineBasicMaterial({ color: 0x4fa8ff, transparent: true, opacity: 0.5 }),
-    );
-    edge.position.copy(base.position);
-    this.scene.add(edge);
+  private lampMesh!: Mesh;
 
-    this.emitter = new THREE.Mesh(new THREE.CircleGeometry(1.1, 64), discMaterial(0x6fe0ff, 1.6));
-    this.emitter.rotation.x = -Math.PI / 2;
-    this.emitter.position.y = -0.83;
-    this.scene.add(this.emitter);
-
-    const ringSpecs = [
-      { r: 0.62, w: 0.025, arc: Math.PI * 2, c: 0xbff4ff },
-      { r: 0.82, w: 0.04, arc: Math.PI * 1.6, c: 0x4fd8ff },
-      { r: 1.02, w: 0.018, arc: Math.PI * 2, c: 0x8a7dff },
-      { r: 1.18, w: 0.05, arc: Math.PI * 0.9, c: 0x4fd8ff },
-      { r: 1.32, w: 0.012, arc: Math.PI * 2, c: 0x6a8cff },
-    ];
-    for (const s of ringSpecs) {
-      const ring = new THREE.Mesh(
-        new THREE.RingGeometry(s.r, s.r + s.w, 96, 1, 0, s.arc),
-        new THREE.MeshBasicMaterial({ color: s.c, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, depthWrite: false, toneMapped: false }),
-      );
-      ring.rotation.x = -Math.PI / 2;
-      ring.position.y = -0.82;
-      this.rings.push(ring);
-      this.scene.add(ring);
-    }
-  }
-
-  // ----------------------------------------------------------- hologram
-  private buildHologram() {
-    this.hologram.add(this.bust.group);
-    this.hologram.position.y = 1.15;
-    this.hologram.scale.setScalar(0.95);
-    this.scene.add(this.hologram);
-
-    // Data streams: vertical lines from the emitter up into the chest.
-    const rand = mulberry32(3);
-    const pos: number[] = [];
-    const t: number[] = [];
-    const seed: number[] = [];
-    const segs = 12;
-    for (let i = 0; i < 34; i++) {
-      const x = (rand() - 0.5) * 1.3;
-      const z = (rand() - 0.5) * 0.5 + 0.1;
-      const h = 0.8 + rand() * 1.2;
-      const s = rand();
-      for (let k = 0; k < segs; k++) {
-        const a = k / segs;
-        const b = (k + 1) / segs;
-        pos.push(x, -0.82 + a * h, z, x, -0.82 + b * h, z);
-        t.push(a, b);
-        seed.push(s, s);
+  private drawLeds(t: number) {
+    const ctx = this.ledTex.getContext() as CanvasRenderingContext2D;
+    ctx.fillStyle = "#000000";
+    ctx.fillRect(0, 0, 256, 512);
+    const palette = ["#ffa040", "#9a6bff", "#4fb8ff", "#ffc070", "#7a5cff"];
+    // Server units with LED rows.
+    for (let u = 0; u < 20; u++) {
+      const y = 10 + u * 25;
+      ctx.fillStyle = "#0b0d1e";
+      ctx.fillRect(8, y, 240, 20);
+      for (let k = 0; k < 7; k++) {
+        const s = this.ledSeeds[(u * 7 + k) % this.ledSeeds.length];
+        const on = Math.sin(t * (0.6 + (s * 7) % 3) + s * 100) > -0.3;
+        if (!on) continue;
+        ctx.fillStyle = palette[Math.floor(s * 997) % palette.length];
+        ctx.fillRect(16 + k * 30 + (s * 12) % 8, y + 7, 9, 4);
       }
     }
-    const g = new THREE.BufferGeometry();
-    g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
-    g.setAttribute("aT", new THREE.Float32BufferAttribute(t, 1));
-    g.setAttribute("aSeed", new THREE.Float32BufferAttribute(seed, 1));
-    this.streams = new THREE.LineSegments(g, streamMaterial());
-    this.scene.add(this.streams);
+    this.ledTex.update();
+  }
+
+  // ------------------------------------------------------------- platform
+  private buildPlatform() {
+    const scene = this.scene;
+    const base = MeshBuilder.CreateBox("platform", { width: 3.6, height: 0.25, depth: 2.6 }, scene);
+    base.position.y = -0.97;
+    const baseMat = new StandardMaterial("platform", scene);
+    baseMat.diffuseColor = Color3.FromHexString("#0c0f22");
+    baseMat.specularColor = new Color3(0.5, 0.5, 0.8);
+    baseMat.specularPower = 64;
+    base.material = baseMat;
+    base.enableEdgesRendering();
+    base.edgesWidth = 1.2;
+    base.edgesColor = new Color4(0.31, 0.66, 1, 0.6);
+
+    // Emitter: radial glow texture on a disc.
+    const tex = new DynamicTexture("emitter", { width: 256, height: 256 }, scene, false);
+    const ctx = tex.getContext() as CanvasRenderingContext2D;
+    const g = ctx.createRadialGradient(128, 128, 0, 128, 128, 128);
+    g.addColorStop(0, "rgba(255,255,255,1)");
+    g.addColorStop(0.3, "rgba(170,240,255,0.9)");
+    g.addColorStop(0.6, "rgba(80,200,255,0.35)");
+    g.addColorStop(1, "rgba(40,120,255,0)");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 256, 256);
+    tex.update();
+    tex.hasAlpha = true;
+    const emitter = MeshBuilder.CreateDisc("emitter", { radius: 1.15, tessellation: 64 }, scene);
+    emitter.rotation.x = Math.PI / 2;
+    emitter.position.y = -0.83;
+    this.emitterMat = new StandardMaterial("emitter", scene);
+    this.emitterMat.disableLighting = true;
+    this.emitterMat.emissiveTexture = tex;
+    this.emitterMat.opacityTexture = tex;
+    this.emitterMat.alphaMode = Constants.ALPHA_ADD;
+    this.emitterMat.disableDepthWrite = true;
+    emitter.material = this.emitterMat;
+
+    const specs = [
+      { r: 0.62, t: 0.02, arc: 1, c: "#bff4ff" },
+      { r: 0.84, t: 0.035, arc: 0.8, c: "#4fd8ff" },
+      { r: 1.03, t: 0.016, arc: 1, c: "#8a7dff" },
+      { r: 1.18, t: 0.045, arc: 0.45, c: "#4fd8ff" },
+      { r: 1.32, t: 0.012, arc: 1, c: "#6a8cff" },
+    ];
+    for (const s of specs) {
+      const pts: Vector3[] = [];
+      const n = Math.max(8, Math.round(96 * s.arc));
+      for (let i = 0; i <= n; i++) {
+        const a = (i / n) * Math.PI * 2 * s.arc;
+        pts.push(new Vector3(Math.cos(a) * s.r, 0, Math.sin(a) * s.r));
+      }
+      const ring = MeshBuilder.CreateTube("ring", { path: pts, radius: s.t / 2, tessellation: 6 }, scene);
+      ring.position.y = -0.82;
+      const mat = new StandardMaterial("ring", scene);
+      mat.disableLighting = true;
+      mat.emissiveColor = Color3.FromHexString(s.c);
+      ring.material = mat;
+      this.rings.push(ring);
+    }
+  }
+
+  // ------------------------------------------------------ hologram extras
+  private buildHologramExtras() {
+    const scene = this.scene;
+    // Data streams: thin vertical quads from the emitter up into the chest.
+    const rand = mulberry32(3);
+    const positions: number[] = [];
+    const uvs: number[] = [];
+    const indices: number[] = [];
+    let v = 0;
+    for (let i = 0; i < 36; i++) {
+      const x = (rand() - 0.5) * 1.3;
+      const z = (rand() - 0.5) * 0.5 - 0.1;
+      const h = 0.8 + rand() * 1.2;
+      const w = 0.006 + rand() * 0.008;
+      const seed = rand();
+      positions.push(x - w, -0.82, z, x + w, -0.82, z, x + w, -0.82 + h, z, x - w, -0.82 + h, z);
+      uvs.push(seed, 0, seed, 0, seed, 1, seed, 1);
+      indices.push(v, v + 1, v + 2, v, v + 2, v + 3);
+      v += 4;
+    }
+    const streams = new Mesh("streams", scene);
+    const vd = new VertexData();
+    vd.positions = positions;
+    vd.uvs = uvs;
+    vd.indices = indices;
+    vd.applyToMesh(streams);
+    this.streamMat = this.shader("holoStream", ["uTime", "uSpeed", "uColor", "uIntensity"]);
+    this.streamMat.setFloat("uSpeed", 1);
+    streams.material = this.streamMat;
+    this.glow.referenceMeshToUseItsOwnMaterial(streams);
 
     // Grid panel behind the head with small data bars.
-    const grid: number[] = [];
-    const W = 2.7;
-    const H = 3.1;
-    const step = 0.15;
-    for (let x = -W / 2; x <= W / 2 + 1e-6; x += step) grid.push(x, -H / 2, 0, x, H / 2, 0);
-    for (let y = -H / 2; y <= H / 2 + 1e-6; y += step) grid.push(-W / 2, y, 0, W / 2, y, 0);
-    const gridGeo = new THREE.BufferGeometry().setAttribute("position", new THREE.Float32BufferAttribute(grid, 3));
-    const gridMat = new THREE.LineBasicMaterial({ color: 0x4a5cff, transparent: true, opacity: 0.14, blending: THREE.AdditiveBlending, depthWrite: false });
-    this.panel.add(new THREE.LineSegments(gridGeo, gridMat));
-    const frame = new THREE.LineSegments(
-      new THREE.EdgesGeometry(new THREE.PlaneGeometry(W, H)),
-      new THREE.LineBasicMaterial({ color: 0x6a7dff, transparent: true, opacity: 0.4, blending: THREE.AdditiveBlending }),
-    );
-    this.panel.add(frame);
-    const barMat = new THREE.MeshBasicMaterial({ color: 0x9a6bff, transparent: true, opacity: 0.45, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false });
+    const panel = MeshBuilder.CreatePlane("panel", { width: 2.7, height: 3.1 }, scene);
+    panel.position.set(0, 1.25, 1.3);
+    this.panelMat = this.shader("holoPanel", ["uColor", "uTime", "uCells"]);
+    this.panelMat.setColor3("uColor", Color3.FromHexString("#4a5cff"));
+    this.panelMat.setVector2("uCells", new Vector2(26, 30));
+    panel.material = this.panelMat;
+    this.glow.addExcludedMesh(panel);
+    const barMat = new StandardMaterial("bar", scene);
+    barMat.disableLighting = true;
+    barMat.emissiveColor = Color3.FromHexString("#7a54d8");
+    barMat.alpha = 0.7;
     const bars = (x: number, y: number, n: number) => {
       for (let i = 0; i < n; i++) {
-        const bar = new THREE.Mesh(new THREE.PlaneGeometry(0.32 - (i % 3) * 0.05, 0.035), barMat);
-        bar.position.set(x, y - i * 0.07, 0.01);
-        this.panel.add(bar);
+        const bar = MeshBuilder.CreatePlane("bar", { width: 0.32 - (i % 3) * 0.05, height: 0.035 }, scene);
+        bar.position.set(x, y - i * 0.07, 1.29);
+        bar.material = barMat;
       }
     };
-    bars(-W / 2 - 0.05, H / 2 - 0.45, 6);
-    bars(W / 2 + 0.05, -H / 2 + 0.75, 7);
-    this.panel.position.set(0, 1.25, -1.3);
-    this.scene.add(this.panel);
+    bars(-1.4, 2.35, 6);
+    bars(1.4, 0.45, 7);
   }
 
-  // -------------------------------------------------------------- smoke
-  private buildSmoke() {
-    const n = 220;
-    const rand = mulberry32(9);
-    const pos = new Float32Array(n * 3);
-    this.smokeVel = new Float32Array(n);
-    for (let i = 0; i < n; i++) {
-      pos[i * 3] = (rand() - 0.5) * 8;
-      pos[i * 3 + 1] = -1.1 + rand() * 1.1;
-      pos[i * 3 + 2] = -3 + rand() * 5;
-      this.smokeVel[i] = 0.05 + rand() * 0.12;
-    }
-    const g = new THREE.BufferGeometry().setAttribute("position", new THREE.BufferAttribute(pos, 3));
-    this.smoke = new THREE.Points(
-      g,
-      new THREE.PointsMaterial({
-        size: 2.0,
-        map: glowTexture(),
-        color: 0x7a3cff,
-        transparent: true,
-        opacity: 0.035,
-        depthWrite: false,
-        blending: THREE.AdditiveBlending,
-      }),
-    );
-    this.scene.add(this.smoke);
+  // ------------------------------------------------------------ particles
+  private softTexture(): Texture {
+    const t = new DynamicTexture("soft", { width: 64, height: 64 }, this.scene, false);
+    const ctx = t.getContext() as CanvasRenderingContext2D;
+    const g = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+    g.addColorStop(0, "rgba(255,255,255,1)");
+    g.addColorStop(0.3, "rgba(255,255,255,0.5)");
+    g.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 64, 64);
+    t.hasAlpha = true;
+    t.update();
+    return t;
   }
 
-  // -------------------------------------------------------------- frame
-  private frame() {
-    const dt = Math.min(this.clock.getDelta(), 0.05);
-    const t = this.clock.elapsedTime;
-    holoUniforms.uTime.value = t;
+  private buildParticles() {
+    const scene = this.scene;
+    const soft = this.softTexture();
 
-    // Ease colour and intensity toward the current state.
-    const targetIntensity = { offline: 0.35, idle: 1, listening: 1.2, thinking: 1.05, speaking: 1.3 }[this.state];
-    this.color.lerp(COLORS[this.state], 1 - Math.exp(-dt * 4));
-    this.intensity += (targetIntensity - this.intensity) * (1 - Math.exp(-dt * 4));
-    holoUniforms.uColor.value.copy(this.color);
-    holoUniforms.uIntensity.value = this.intensity;
-    holoUniforms.uFlicker.value = this.state === "offline" ? 0.35 : 0;
+    // Low purple haze drifting across the floor.
+    const smoke = new ParticleSystem("smoke", 160, scene);
+    smoke.particleTexture = soft;
+    smoke.emitter = new Vector3(0, -0.7, 0);
+    smoke.minEmitBox = new Vector3(-4.5, -0.3, -2.5);
+    smoke.maxEmitBox = new Vector3(4.5, 0.5, 3);
+    smoke.color1 = new Color4(0.45, 0.2, 0.9, 0.05);
+    smoke.color2 = new Color4(0.3, 0.15, 0.8, 0.04);
+    smoke.colorDead = new Color4(0.2, 0.1, 0.5, 0);
+    smoke.minSize = 1.6;
+    smoke.maxSize = 3.2;
+    smoke.minLifeTime = 8;
+    smoke.maxLifeTime = 14;
+    smoke.emitRate = 14;
+    smoke.blendMode = ParticleSystem.BLENDMODE_ADD;
+    smoke.direction1 = new Vector3(-0.08, 0.01, -0.02);
+    smoke.direction2 = new Vector3(0.08, 0.03, 0.02);
+    smoke.minEmitPower = 0.5;
+    smoke.maxEmitPower = 1;
+    smoke.minAngularSpeed = -0.1;
+    smoke.maxAngularSpeed = 0.1;
+    smoke.preWarmCycles = 200;
+    smoke.preWarmStepOffset = 5;
+    smoke.start();
 
-    // Scan band sweeps the head while thinking.
-    holoUniforms.uScanY.value =
-      this.state === "thinking" ? this.hologram.position.y + 0.3 + Math.sin(t * 2.2) * 1.3 : -10;
+    // Sparkles rising from the emitter.
+    const sp = (this.sparkles = new ParticleSystem("sparkles", 220, scene));
+    sp.particleTexture = soft;
+    sp.emitter = new Vector3(0, -0.8, 0);
+    sp.createCylinderEmitter(0.9, 0.02, 0.1, 0);
+    sp.color1 = new Color4(0.55, 0.9, 1, 0.9);
+    sp.color2 = new Color4(0.4, 0.6, 1, 0.7);
+    sp.colorDead = new Color4(0.2, 0.3, 1, 0);
+    sp.minSize = 0.015;
+    sp.maxSize = 0.045;
+    sp.minLifeTime = 1.2;
+    sp.maxLifeTime = 2.6;
+    sp.emitRate = 40;
+    sp.blendMode = ParticleSystem.BLENDMODE_ADD;
+    sp.gravity = new Vector3(0, 0.5, 0);
+    sp.minEmitPower = 0.1;
+    sp.maxEmitPower = 0.4;
+    sp.preWarmCycles = 60;
+    sp.start();
+  }
 
-    // Audio drivers.
+  // ---------------------------------------------------------------- floor
+  private buildFloor() {
+    const scene = this.scene;
+    const floor = MeshBuilder.CreateGround("floor", { width: 14, height: 26 }, scene);
+    floor.position.set(0, FLOOR_Y, 4);
+    const mat = new StandardMaterial("floor", scene);
+    mat.diffuseColor = Color3.FromHexString("#06070f");
+    mat.specularColor = new Color3(0.15, 0.15, 0.3);
+    this.mirror = new MirrorTexture("mirror", { ratio: 0.35 }, scene, true);
+    this.mirror.mirrorPlane = new Plane(0, -1, 0, FLOOR_Y);
+    this.mirror.level = 0.45;
+    this.mirror.adaptiveBlurKernel = 24;
+    this.mirror.renderList = scene.meshes.filter((m) => m !== floor && m.name !== "wall");
+    mat.reflectionTexture = this.mirror;
+    floor.material = mat;
+    this.floorMat = mat;
+
+    // Glowing floor seams.
+    const lines: Vector3[][] = [];
+    for (let x = -3; x <= 3; x += 1.5) lines.push([new Vector3(x, FLOOR_Y + 0.01, -4), new Vector3(x, FLOOR_Y + 0.01, 12)]);
+    for (let z = -4; z <= 12; z += 1.5) lines.push([new Vector3(-3.6, FLOOR_Y + 0.01, z), new Vector3(3.6, FLOOR_Y + 0.01, z)]);
+    const seams = MeshBuilder.CreateLineSystem("seams", { lines }, scene);
+    seams.color = Color3.FromHexString("#3a3a8a");
+    seams.alpha = 0.45;
+  }
+
+  // ----------------------------------------------------------------- post
+  private buildPost() {
+    const scene = this.scene;
+    const cam = this.camera;
+
+    const vls = (this.vls = new VolumetricLightScatteringPostProcess("godrays", 0.4, cam, this.lampMesh, 48, Texture.BILINEAR_SAMPLINGMODE, this.engine, false));
+    vls.exposure = 0.22;
+    vls.decay = 0.965;
+    vls.weight = 0.55;
+    vls.density = 0.9;
+
+    const pipe = (this.pipe = new DefaultRenderingPipeline("pipe", true, scene, [cam]));
+    pipe.samples = 1;
+    pipe.fxaaEnabled = true;
+    pipe.bloomEnabled = true;
+    pipe.bloomThreshold = 0.55;
+    pipe.bloomWeight = 0.35;
+    pipe.bloomKernel = 48;
+    pipe.bloomScale = 0.5;
+    pipe.chromaticAberrationEnabled = true;
+    pipe.chromaticAberration.aberrationAmount = 14;
+    pipe.chromaticAberration.radialIntensity = 0.6;
+    pipe.grainEnabled = true;
+    pipe.grain.intensity = 6;
+    pipe.grain.animated = true;
+    pipe.imageProcessingEnabled = true;
+    pipe.imageProcessing.toneMappingEnabled = true;
+    pipe.imageProcessing.toneMappingType = ImageProcessingConfiguration.TONEMAPPING_ACES;
+    pipe.imageProcessing.exposure = 1.1;
+    pipe.imageProcessing.contrast = 1.25;
+    pipe.imageProcessing.vignetteEnabled = true;
+    pipe.imageProcessing.vignetteWeight = 2.2;
+    pipe.imageProcessing.vignetteColor = new Color4(0.02, 0, 0.06, 0);
+
+    this.finish = new PostProcess("finish", "holoFinish", ["uTime", "uGlitch", "uRes"], null, 1, cam);
+    this.finish.onApply = (effect) => {
+      effect.setFloat("uTime", this.time);
+      effect.setFloat("uGlitch", this.glitch);
+      effect.setFloat2("uRes", this.finish.width, this.finish.height);
+    };
+  }
+
+  // ---------------------------------------------------------------- frame
+  private update(dt: number) {
+    this.time += dt;
+    const t = this.time;
+    const k = 1 - Math.exp(-dt * 4);
+    Color3.LerpToRef(this.color, COLORS[this.state], k, this.color);
+    this.intensity += (INTENSITY[this.state] - this.intensity) * k;
+    this.glitch = Math.max(0, this.glitch - dt * 2.2);
+    if (this.state === "offline" && Math.random() < dt * 0.6) this.glitch = 0.6;
+
     const drive = this.state === "listening" ? this.micLevel : this.state === "speaking" ? this.mouthLevel : 0;
     this.level += (drive - this.level) * (1 - Math.exp(-dt * 12));
     const jawTarget = this.state === "speaking" ? this.mouthLevel : 0;
     this.jaw += (jawTarget - this.jaw) * (1 - Math.exp(-dt * 18));
-    this.bust.updateHead(this.jaw);
 
-    // Gentle hologram motion: hover, slow turn, look toward the pointer.
+    const scanY = this.state === "thinking" ? this.holo.position.y + 0.4 + Math.sin(t * 2.2) * 1.2 : -10;
+    const h = this.headMat;
+    h.setColor3("uColor", this.color);
+    h.setFloat("uIntensity", this.intensity);
+    h.setFloat("uTime", t);
+    h.setFloat("uScanY", scanY);
+    h.setFloat("uJaw", this.jaw);
+    h.setFloat("uFlicker", this.state === "offline" ? 0.35 : 0);
+    h.setVector3("cameraPosition", this.camera.position);
+
+    this.streamMat.setFloat("uTime", t);
+    this.streamMat.setColor3("uColor", this.color);
+    this.streamMat.setFloat("uIntensity", this.intensity);
+    this.streamMat.setFloat("uSpeed", this.state === "speaking" ? 2.6 : this.state === "thinking" ? 1.8 : 1);
+    this.panelMat.setFloat("uTime", t);
+    this.beamMat.setFloat("uTime", t);
+
+    // Gentle motion: hover, slow turn, follow the pointer.
     const lookYaw = this.state === "speaking" || this.state === "listening" ? 0 : Math.sin(t * 0.25) * 0.35;
-    const yaw = lookYaw + this.pointer.x * 0.15;
-    this.bust.group.rotation.y += (yaw - this.bust.group.rotation.y) * (1 - Math.exp(-dt * 2));
-    this.bust.group.rotation.x += (this.pointer.y * 0.06 - this.bust.group.rotation.x) * (1 - Math.exp(-dt * 2));
-    this.hologram.position.y = 1.15 + Math.sin(t * 1.1) * 0.03;
-    (this.bust.eyes.material as THREE.PointsMaterial).size = 0.18 + this.level * 0.12 + (this.state === "speaking" ? 0.04 : 0);
-    (this.bust.eyes.material as THREE.PointsMaterial).opacity = this.state === "offline" ? 0.3 : 1;
+    const yaw = this.debugYaw ?? lookYaw - this.pointer.x * 0.15;
+    const ease = 1 - Math.exp(-dt * 2);
+    this.bust.rotation.y += (yaw - this.bust.rotation.y) * ease;
+    this.bust.rotation.x += (this.pointer.y * 0.05 - this.bust.rotation.x) * ease;
+    this.holo.position.y = 1.15 + Math.sin(t * 1.1) * 0.03;
 
-    // Platform rings spin faster while thinking and pulse with audio.
+    if (this.eyeMat) {
+      const e = 0.7 + this.level * 0.6 + (this.state === "speaking" ? 0.3 : 0);
+      this.eyeMat.emissiveColor.set(0.78 * e, 0.96 * e, 1.0 * e);
+      this.eyeMat.alpha = this.state === "offline" ? 0.25 : 0.9;
+    }
+
     const spin = this.state === "thinking" ? 1.8 : this.state === "offline" ? 0.1 : 0.4;
     this.rings.forEach((ring, i) => {
-      ring.rotation.z += dt * spin * (i % 2 === 0 ? 1 : -1.3) * (0.4 + i * 0.15);
-      const s = 1 + this.level * 0.12 * (1 + i * 0.3);
-      ring.scale.setScalar(s);
-      (ring.material as THREE.MeshBasicMaterial).opacity = (0.5 + 0.4 * this.intensity) * (this.state === "offline" ? 0.4 : 1);
+      ring.rotation.y += dt * spin * (i % 2 === 0 ? 1 : -1.3) * (0.4 + i * 0.15);
+      ring.scaling.setAll(1 + this.level * 0.12 * (1 + i * 0.3));
+      ring.visibility = (0.45 + 0.45 * this.intensity) * (this.state === "offline" ? 0.4 : 1);
     });
-    const disc = this.emitter.material as THREE.ShaderMaterial;
-    disc.uniforms.uStrength.value = (1.1 + this.level * 1.2 + Math.sin(t * 3) * 0.08) * this.intensity;
-    (this.streams.material as THREE.ShaderMaterial).uniforms.uSpeed.value =
-      this.state === "speaking" ? 2.6 : this.state === "thinking" ? 1.8 : 1;
+    const em = 0.9 + this.level * 0.8 + Math.sin(t * 3) * 0.06;
+    this.emitterMat.emissiveColor.set(em * this.intensity, em * this.intensity, em * this.intensity);
+    this.sparkles.emitRate = this.state === "offline" ? 6 : 40 + this.level * 120;
 
-    // LEDs blink (every few frames is plenty).
-    if (Math.floor(t * 20) !== this.ledTick) {
-      this.ledTick = Math.floor(t * 20);
-      const c = this.tmpColor;
-      for (let i = 0; i < this.leds.count; i++) {
-        const ph = this.ledPhase[i];
-        const on = Math.sin(t * (0.6 + (ph % 3)) + ph) > -0.3 ? 1 : 0.12;
-        c.copy(this.ledBase[i]).multiplyScalar(on);
-        this.leds.setColorAt(i, c);
-      }
-      if (this.leds.instanceColor) this.leds.instanceColor.needsUpdate = true;
-    }
-
-    // Drifting haze.
-    const sp = this.smoke.geometry.getAttribute("position") as THREE.BufferAttribute;
-    for (let i = 0; i < sp.count; i++) {
-      let x = sp.getX(i) + this.smokeVel[i] * dt * (i % 2 ? 1 : -1);
-      if (x > 4.5) x = -4.5;
-      if (x < -4.5) x = 4.5;
-      sp.setX(i, x);
-      sp.setY(i, sp.getY(i) + Math.sin(t * 0.3 + i) * 0.0008);
-    }
-    sp.needsUpdate = true;
+    if (Math.floor(t * 4) !== Math.floor((t - dt) * 4)) this.drawLeds(t);
 
     // Subtle camera parallax.
-    this.camera.position.x += (this.pointer.x * 0.35 - this.camera.position.x) * (1 - Math.exp(-dt * 1.5));
+    this.camera.position.x += (-this.pointer.x * 0.35 - this.camera.position.x) * (1 - Math.exp(-dt * 1.5));
     this.camera.position.y += (0.7 - this.pointer.y * 0.2 - this.camera.position.y) * (1 - Math.exp(-dt * 1.5));
-    this.camera.lookAt(0, 0.4, 0);
-
-    this.composer.render();
+    this.camera.setTarget(new Vector3(0, 0.45, 0));
   }
 }

@@ -21,7 +21,7 @@ JARVIS is a **from-scratch agent framework** (no LangChain, no AutoGen) built to
 
 ## 🖥️ Jarvis HUD for OpenClaw
 
-The `hud/` folder holds a holographic 3D front-end (Vite + TypeScript + three.js) that
+The `hud/` folder holds a holographic 3D front-end (Vite + TypeScript + Babylon.js) that
 connects to an [OpenClaw](https://github.com/openclaw/openclaw) Gateway over WebSocket,
 with browser voice input and output. See [`hud/README.md`](hud/README.md) (Dutch).
 

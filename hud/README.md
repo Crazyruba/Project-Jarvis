@@ -1,7 +1,7 @@
 # J.A.R.V.I.S HUD voor OpenClaw
 
-Een holografische 3D-interface voor je OpenClaw-assistent: een draadmodel-hoofd op een
-gloeiend platform in een paarse serverruimte. Je praat via de microfoon van je browser,
+Een holografische 3D-interface voor je OpenClaw-assistent, gebouwd met Babylon.js: een
+gescand hoofd als hologram-raster op een gloeiend platform in een paarse serverruimte. Je praat via de microfoon van je browser,
 Jarvis antwoordt hardop, en een klein statuspaneel laat zien of hij **online** is,
 **luistert**, **denkt** of **spreekt**.
 
@@ -62,20 +62,33 @@ Browser (HUD)                                    OpenClaw Gateway
 ─────────────                                    ────────────────
 microfoon → Web Speech API → tekst ── chat.send ──▶  agent
 luidspreker ◀ speechSynthesis ◀ tekst ◀── chat-events (delta/final)
-three.js hologram reageert op: online · luistert · denkt · spreekt
+Babylon.js-hologram reageert op: online · luistert · denkt · spreekt
 ```
 
 - `src/gateway/` — WebSocket-client voor Gateway-protocol v4: `connect.challenge`,
   ondertekende `connect`, `chat.send` en `chat`-events, automatisch opnieuw verbinden.
 - `src/voice/` — spraakherkenning, spraakuitvoer en een microfoon-niveaumeter.
-- `src/scene/` — de three.js-scène: procedureel draadhoofd met bewegende kaak,
-  platform met ringen, datastralen, serverkasten, nevel, lichtbundel en bloom.
+- `src/scene/` — de Babylon.js-scène: gescand hoofd (`public/models/head.glb`) met een
+  hologram-shader en bewegende kaak, platform met ringen, datastralen, serverkasten met
+  knipperende leds, rook, spiegelende vloer, lichtbundel met god rays, glow en bloom.
+  De shaders staan in `src/scene/shaders.ts`.
 
 ## Prestaties
 
 De scène is afgesteld op geïntegreerde grafische kaarten zoals de Intel UHD 620 in een
-Lenovo ThinkPad T580: de pixelratio is begrensd op 1,5 en de bloom rendert op halve
+Lenovo ThinkPad T580: de pixelratio is begrensd op 1,25 en glow en bloom renderen op halve
 resolutie.
+
+Haalt de browser geen 40 beelden per seconde, dan schakelt de HUD stap voor stap zware
+effecten uit: eerst de spiegelende vloer en filmkorrel, dan de god rays, en als laatste een
+lagere renderresolutie. Het gekozen niveau wordt onthouden. Open
+`http://localhost:5173/?quality=high` om weer met de volle kwaliteit te beginnen.
+
+## Credits
+
+Het hoofdmodel is de "Lee Perry-Smith head scan" van Infinite Realities, onder
+[CC BY 3.0](https://creativecommons.org/licenses/by/3.0/). Zie
+[`public/models/CREDITS.md`](public/models/CREDITS.md).
 
 ## Scripts
 

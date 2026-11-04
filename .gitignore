@@ -81,3 +81,5 @@ htmlcov/
 *.pem
 *.key
 *.crt
+# HUD 3D assets (not AI models)
+!hud/public/models/
