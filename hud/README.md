@@ -69,7 +69,8 @@ Babylon.js-hologram reageert op: online · luistert · denkt · spreekt
   ondertekende `connect`, `chat.send` en `chat`-events, automatisch opnieuw verbinden.
 - `src/voice/` — spraakherkenning, spraakuitvoer en een microfoon-niveaumeter.
 - `src/scene/` — de Babylon.js-scène: gescand hoofd (`public/models/head.glb`) met een
-  hologram-shader en bewegende kaak, platform met ringen, datastralen, serverkasten met
+  neon-raster (`GridMaterial`), een Fresnel-randlaag, gloed, een bewegende kaak en een
+  rustige adem- en draaibeweging (`holoHead.ts`, `idleMotion.ts`), platform met ringen, datastralen, serverkasten met
   knipperende leds, rook, spiegelende vloer, lichtbundel met god rays, glow en bloom.
   De shaders staan in `src/scene/shaders.ts`.
 

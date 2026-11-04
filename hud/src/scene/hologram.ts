@@ -3,7 +3,7 @@
 import { Engine } from "@babylonjs/core/Engines/engine";
 import { Constants } from "@babylonjs/core/Engines/constants";
 import { Scene } from "@babylonjs/core/scene";
-import { Quaternion, Vector2, Vector3, Vector4 } from "@babylonjs/core/Maths/math.vector";
+import { Quaternion, Vector2, Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
 import { Plane } from "@babylonjs/core/Maths/math.plane";
 import { FreeCamera } from "@babylonjs/core/Cameras/freeCamera";
@@ -31,12 +31,14 @@ import "@babylonjs/core/Rendering/edgesRenderer";
 import { ImportMeshAsync } from "@babylonjs/core/Loading/sceneLoader";
 import "@babylonjs/loaders/glTF/2.0";
 import "./shaders";
+import { HoloHead } from "./holoHead";
+import { attachIdleMotion } from "./idleMotion";
 
 export type HoloState = "offline" | "idle" | "listening" | "thinking" | "speaking";
 
 const COLORS: Record<HoloState, Color3> = {
   offline: Color3.FromHexString("#2a4a66"),
-  idle: Color3.FromHexString("#4fd8ff"),
+  idle: Color3.FromHexString("#00f0ff"),
   listening: Color3.FromHexString("#86f2ff"),
   thinking: Color3.FromHexString("#8a7dff"),
   speaking: Color3.FromHexString("#66e6ff"),
@@ -95,7 +97,7 @@ export class HoloScene {
   private glow: GlowLayer;
   private holo: TransformNode;
   private bust: TransformNode;
-  private headMat: ShaderMaterial;
+  private head: HoloHead;
   private streamMat!: ShaderMaterial;
   private panelMat!: ShaderMaterial;
   private beamMat!: ShaderMaterial;
@@ -155,9 +157,13 @@ export class HoloScene {
     this.holo.position.y = 1.15;
     this.bust.parent = this.holo;
 
-    this.headMat = this.createHeadMaterial();
     this.glow = new GlowLayer("glow", scene, { mainTextureRatio: 0.5, blurKernelSize: 48 });
-    this.glow.intensity = 0.85;
+    this.glow.intensity = 0.9;
+    this.head = new HoloHead(scene, this.glow, {
+      gridRatio: 0.12,
+      majorUnitFrequency: 6,
+      mouth: { mouthY: HEAD.mouthY, chinY: HEAD.chinY, faceZ: HEAD.faceZ, halfWidth: HEAD.mouthHalfWidth },
+    });
 
     this.buildRoom();
     this.buildPlatform();
@@ -241,26 +247,6 @@ export class HoloScene {
   }
 
   // ------------------------------------------------------------ materials
-  private createHeadMaterial(): ShaderMaterial {
-    const m = new ShaderMaterial("holoHead", this.scene, { vertex: "holoHead", fragment: "holoHead" }, {
-      attributes: ["position", "normal"],
-      uniforms: ["world", "viewProjection", "uJaw", "uMouth", "uColor", "uIntensity", "uTime", "uScanY", "uFlicker", "cameraPosition", "uGrid", "uChestY"],
-      needAlphaBlending: true,
-    });
-    m.alphaMode = Constants.ALPHA_ADD;
-    m.backFaceCulling = true;
-    // Depth pre-pass (with depth writes on, or the pre-pass writes nothing): only the nearest surface adds light, so the mouth cavity and other
-    // inner geometry of the scan don't shine through the face.
-    m.needDepthPrePass = true;
-    m.setVector4("uMouth", new Vector4(HEAD.mouthY, HEAD.chinY, HEAD.faceZ, HEAD.mouthHalfWidth));
-    m.setVector2("uGrid", new Vector2(5.2, 72));
-    m.setFloat("uChestY", HEAD.chestY);
-    m.setFloat("uJaw", 0);
-    m.setFloat("uScanY", -10);
-    m.setFloat("uFlicker", 0);
-    return m;
-  }
-
   private shader(name: string, uniforms: string[]): ShaderMaterial {
     const m = new ShaderMaterial(name, this.scene, { vertex: name, fragment: name }, {
       attributes: ["position", "uv"],
@@ -287,13 +273,10 @@ export class HoloScene {
       const s = 2.45 / HEAD.height;
       this.bust.scaling.setAll(s);
       this.bust.position.y = -0.2;
-      for (const mesh of meshes) {
-        mesh.material = this.headMat;
-        // Keep the head out of the glow layer so its grid lines stay crisp.
-        this.glow.addExcludedMesh(mesh);
-        this.mirror?.renderList?.push(mesh);
-      }
+      this.head.attach(meshes);
+      for (const mesh of meshes) this.mirror?.renderList?.push(mesh);
       this.addEyes(root);
+      attachIdleMotion(this.scene, root as TransformNode);
     } catch (err) {
       console.warn("Hoofdmodel niet geladen, val terug op een eenvoudige vorm", err);
       const head = MeshBuilder.CreateSphere("fallbackHead", { diameterX: 3.1, diameterY: 4, diameterZ: 3.6, segments: 48 }, this.scene);
@@ -305,10 +288,7 @@ export class HoloScene {
       chest.position.y = -2.6;
       this.bust.scaling.setAll(2.45 / HEAD.height);
       this.bust.position.y = -0.2;
-      for (const m of [head, chest]) {
-        m.material = this.headMat;
-        this.glow.addExcludedMesh(m);
-      }
+      this.head.attach([head, chest]);
     }
   }
 
@@ -707,15 +687,7 @@ export class HoloScene {
     const jawTarget = this.state === "speaking" ? this.mouthLevel : 0;
     this.jaw += (jawTarget - this.jaw) * (1 - Math.exp(-dt * 18));
 
-    const scanY = this.state === "thinking" ? this.holo.position.y + 0.4 + Math.sin(t * 2.2) * 1.2 : -10;
-    const h = this.headMat;
-    h.setColor3("uColor", this.color);
-    h.setFloat("uIntensity", this.intensity);
-    h.setFloat("uTime", t);
-    h.setFloat("uScanY", scanY);
-    h.setFloat("uJaw", this.jaw);
-    h.setFloat("uFlicker", this.state === "offline" ? 0.35 : 0);
-    h.setVector3("cameraPosition", this.camera.position);
+    this.head.update(this.color, this.intensity, this.jaw);
 
     this.streamMat.setFloat("uTime", t);
     this.streamMat.setColor3("uColor", this.color);
@@ -724,13 +696,11 @@ export class HoloScene {
     this.panelMat.setFloat("uTime", t);
     this.beamMat.setFloat("uTime", t);
 
-    // Gentle motion: hover, slow turn, follow the pointer.
-    const lookYaw = this.state === "speaking" || this.state === "listening" ? 0 : Math.sin(t * 0.25) * 0.35;
-    const yaw = this.debugYaw ?? lookYaw - this.pointer.x * 0.15;
+    // Follow the pointer a little (breathing and the slow turn live in idleMotion.ts).
+    const yaw = this.debugYaw ?? -this.pointer.x * 0.15;
     const ease = 1 - Math.exp(-dt * 2);
     this.bust.rotation.y += (yaw - this.bust.rotation.y) * ease;
     this.bust.rotation.x += (this.pointer.y * 0.05 - this.bust.rotation.x) * ease;
-    this.holo.position.y = 1.15 + Math.sin(t * 1.1) * 0.03;
 
     if (this.eyeMat) {
       const e = 0.7 + this.level * 0.6 + (this.state === "speaking" ? 0.3 : 0);
