@@ -20,16 +20,24 @@ HUD laadt · `/api/health` meldt per backend · typ "Hoi Jarvis, wie ben je?" �
 backend wisselen werkt · netwerk eruit geeft nette fout, geen crash ·
 `lite`-modus zet bloom uit.
 
-## Fase 2 — Nederlandse stem en oren
+## Fase 2 — Nederlandse stem en oren ✅ code af, audio nog te testen
 
-- [ ] `voice/stt.py`: `language` uit `config.LANG` (`nl`), Whisper naar `small`
-- [ ] `voice/tts.py`: pyttsx3 → **Piper** met `nl_NL-pim-medium`
-- [ ] RMS tijdens spreken naar de eventbus → hologram beweegt mee
-- [ ] Wake word en ECAPA publiceren hun status op de bus
-- [ ] Push-to-talk neemt serverzijdig op via het bestaande `stt.record()`
+- [x] `voice/stt.py`: `language` uit `config.LANG` (`nl`), Whisper naar `small`
+- [x] `voice/tts.py`: **Piper** met `nl_NL-pim-medium`, pyttsx3 als terugval
+- [x] `voice/piper_setup.py` en `voice/enroll.py` als losse commando's
+- [x] RMS tijdens opnemen én spreken naar de eventbus → hologram beweegt mee
+- [x] `voice/loop.py`: wake word, sprekercontrole, gesprek met vervolgvragen
+- [x] Push-to-talk vanuit de HUD neemt serverzijdig op
+- [x] Sprekerherkenning losgekoppeld van een vaste naam
+- [ ] **Op de T580 testen** — audio is hier niet te verifiëren
 
 **Verificatie:** "Hey Jarvis" → `LUISTERT`, Nederlandse zin correct getranscribeerd,
 Piper antwoordt in het Nederlands, hologram beweegt mee. Vreemde stem wordt geweigerd.
+
+> In deze container is geen microfoon en blokkeert de proxy Hugging Face, dus
+> Piper-synthese en Whisper-herkenning zijn **niet** end-to-end gedraaid. De
+> logica eromheen (motorkeuze, terugval, niveaus, gespreksverloop, toestanden)
+> is wel getest met nagebootste onderdelen.
 
 ## Fase 3 — Tools op het nieuwe brein
 

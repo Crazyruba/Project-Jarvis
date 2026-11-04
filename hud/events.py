@@ -30,6 +30,12 @@ class EventBus:
     def __init__(self) -> None:
         self._subscribers: set[asyncio.Queue] = set()
         self._state: HudState = HudState.IDLE
+        self._loop: asyncio.AbstractEventLoop | None = None
+
+    # -- koppeling met de draaiende server --------------------------------
+    def bind_loop(self, loop: asyncio.AbstractEventLoop) -> None:
+        """Onthoud de lus van de server, zodat threads erop kunnen publiceren."""
+        self._loop = loop
 
     # -- toestand ----------------------------------------------------------
     @property
@@ -77,6 +83,21 @@ class EventBus:
     @property
     def listener_count(self) -> int:
         return len(self._subscribers)
+
+
+    # -- vanuit een andere thread -----------------------------------------
+    # De voice-loop draait in een eigen thread omdat de microfoon en Whisper
+    # blokkeren. Deze twee plannen het werk op de lus van de server.
+    def publish_from_thread(self, kind: str, payload: dict | None = None) -> None:
+        if self._loop is None or self._loop.is_closed():
+            return
+        asyncio.run_coroutine_threadsafe(self.publish(kind, payload), self._loop)
+
+    def set_state_from_thread(self, state: HudState) -> None:
+        if self._loop is None or self._loop.is_closed():
+            self._state = state
+            return
+        asyncio.run_coroutine_threadsafe(self.set_state(state), self._loop)
 
 
 bus = EventBus()

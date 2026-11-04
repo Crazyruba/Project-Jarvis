@@ -1,25 +1,27 @@
 import config
-from voice.voiceprint_store import VoiceprintStore
 from voice.ecapa_encoder import get_encoder
+from voice.voiceprint_store import VoiceprintStore
 
 
 class SpeakerVerifier:
-    """Verifies a voice sample against Karan's ECAPA voiceprint (cosine, via ChromaDB)."""
+    """Vergelijkt een stemfragment met de opgeslagen stemafdruk van de eigenaar."""
 
     def __init__(self, store: VoiceprintStore):
-        self.encoder = get_encoder()      # shared ECAPA model
+        self.encoder = get_encoder()      # gedeeld ECAPA-model
         self.store = store
 
     def verify(self, audio):
         """
-        Returns (is_karan, similarity_score).
+        Geeft (is_eigenaar, gelijkenis) terug.
+
+        De opslag bevat alleen stemafdrukken van de eigenaar, dus de gelijkenis
+        bepaalt het oordeel. Vroeger stond hier een vaste naam; die stond een
+        andere OWNER_NAME in de weg.
         """
         try:
             embedding = self.encoder.embed(audio)
-            similarity, owner = self.store.verify(embedding)
-
-            is_karan = (owner == "karan") and (similarity >= config.SPEAKER_THRESHOLD)
-            return is_karan, similarity
+            gelijkenis, _ = self.store.verify(embedding)
+            return gelijkenis >= config.SPEAKER_THRESHOLD, gelijkenis
         except Exception as e:
-            print(f"   ❌ [Speaker verify error: {e}]")
+            print(f"   ❌ [Sprekercontrole mislukt: {e}]")
             return False, 0.0

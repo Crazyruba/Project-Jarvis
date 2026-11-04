@@ -38,19 +38,26 @@ function setState(value) {
   });
   window.holo?.setState(value);
 
-  // Tijdens spreken het hologram laten meebewegen; echte RMS komt in fase 2.
-  if (value === "speaking" || value === "listening") startFakeLevel();
-  else stopFakeLevel();
+  // Zonder microfoon komen er geen echte niveaus binnen; dan laat een
+  // nagebootst niveau het hologram toch meebewegen. Zodra de spraaklus
+  // echte RMS stuurt, neemt die het over (zie het level-event).
+  if (value === "speaking" || value === "listening") startFallbackLevel();
+  else stopFallbackLevel();
 }
 
 let levelTimer = null;
-function startFakeLevel() {
+let lastRealLevel = 0;
+
+function startFallbackLevel() {
   if (levelTimer) return;
   levelTimer = setInterval(() => {
+    // Een echt niveau van minder dan een halve seconde oud wint.
+    if (Date.now() - lastRealLevel < 500) return;
     window.holo?.setLevel(0.25 + Math.random() * 0.55);
   }, 90);
 }
-function stopFakeLevel() {
+
+function stopFallbackLevel() {
   clearInterval(levelTimer);
   levelTimer = null;
   window.holo?.setLevel(0);
@@ -130,7 +137,11 @@ function connect() {
         endStream(msg.text);
         break;
       case "level":
+        lastRealLevel = Date.now();
         window.holo?.setLevel(msg.value);
+        break;
+      case "voice":
+        if (msg.ready) toast(`Spraak klaar (${msg.engine}) — zeg "Hey Jarvis"`);
         break;
       case "tool":
         say("jarvis", `⚙ ${msg.name}`);
@@ -173,10 +184,8 @@ els.composer.addEventListener("submit", (e) => {
 els.mic.addEventListener("click", () => {
   els.mic.classList.add("live");
   send({ type: "ptt_start" });
-  setTimeout(() => {
-    els.mic.classList.remove("live");
-    send({ type: "ptt_stop" });
-  }, 400);
+  // De opname duurt serverzijdig een vaste tijd; de knop volgt de toestand.
+  setTimeout(() => els.mic.classList.remove("live"), 600);
 });
 
 // Spatie ingedrukt houden = praten. Niet terwijl je typt.

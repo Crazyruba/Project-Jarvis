@@ -1,9 +1,9 @@
 """
-VoiceprintStore — ChromaDB-backed store for Karan's ECAPA voiceprints.
+VoiceprintStore — ChromaDB-opslag voor de stemafdrukken van de eigenaar.
 
 Stores multiple 192-dim ECAPA speaker embeddings in a cosine-space collection.
 Verification averages similarity across the nearest stored samples, which gives
-a far more stable "is this Karan?" score than relying on a single match.
+een stabieler oordeel dan één enkele match.
 """
 
 import numpy as np
@@ -12,7 +12,7 @@ import config
 
 
 class VoiceprintStore:
-    """ChromaDB store for Karan's ECAPA voiceprint vectors (cosine similarity)."""
+    """ChromaDB-opslag voor ECAPA-stemvectoren (cosinusgelijkenis)."""
 
     def __init__(self):
         self.client = chromadb.PersistentClient(path=config.CHROMA_DB_PATH)
@@ -43,7 +43,7 @@ class VoiceprintStore:
         self.collection.add(
             embeddings=[self._to_float_list(embedding)],
             ids=[sample_id],
-            metadatas=[{"owner": "karan"}],
+            metadatas=[{"owner": config.OWNER_NAME.lower()}],
         )
 
     # ---------- verify ----------
@@ -72,7 +72,7 @@ class VoiceprintStore:
         sims = [1.0 - d for d in distances]
         avg_sim = sum(sims) / len(sims) if sims else 0.0
 
-        # Owner is the same for all Karan samples; take the top match's owner
+        # Alle opgeslagen afdrukken zijn van de eigenaar; neem de bovenste.
         owner = metadatas[0].get("owner") if metadatas else None
 
         return avg_sim, owner

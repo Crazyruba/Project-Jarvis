@@ -69,3 +69,40 @@ def test_trage_abonnee_blokkeert_de_bus_niet(bus):
 
     # De wachtrij loopt vol en laat frames vallen in plaats van te blokkeren.
     assert asyncio.run(scenario()) == EventBus.MAX_QUEUE
+
+
+# --- thread-veilige kant (de spraaklus draait in een eigen thread) ----------
+
+def test_publiceren_vanuit_thread_bereikt_de_browser(bus):
+    import threading
+
+    async def scenario():
+        bus.bind_loop(asyncio.get_running_loop())
+        with bus.subscribe() as queue:
+            t = threading.Thread(
+                target=lambda: bus.publish_from_thread("level", {"value": 0.7}))
+            t.start(); t.join()
+            return await asyncio.wait_for(queue.get(), 2)
+
+    assert asyncio.run(scenario()) == {"type": "level", "value": 0.7}
+
+
+def test_toestand_vanuit_thread(bus):
+    import threading
+
+    async def scenario():
+        bus.bind_loop(asyncio.get_running_loop())
+        with bus.subscribe() as queue:
+            t = threading.Thread(
+                target=lambda: bus.set_state_from_thread(HudState.LISTENING))
+            t.start(); t.join()
+            return await asyncio.wait_for(queue.get(), 2)
+
+    assert asyncio.run(scenario()) == {"type": "state", "value": "listening"}
+
+
+def test_zonder_gekoppelde_lus_valt_er_niets_om(bus):
+    # Publiceren voordat de server draait mag geen uitzondering geven.
+    bus.publish_from_thread("level", {"value": 0.5})
+    bus.set_state_from_thread(HudState.SPEAKING)
+    assert bus.state is HudState.SPEAKING

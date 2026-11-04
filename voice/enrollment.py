@@ -6,7 +6,7 @@ from voice.ecapa_encoder import get_encoder
 
 
 class VoiceEnrollment:
-    """One-time voiceprint setup — stores Karan's ECAPA voice vectors in ChromaDB."""
+    """Eenmalig inspreken — slaat de ECAPA-stemvectoren van de eigenaar op."""
 
     def __init__(self, store: VoiceprintStore):
         self.encoder = get_encoder()      # shared ECAPA model
@@ -28,28 +28,28 @@ class VoiceEnrollment:
     def enroll(self, tts):
         """Record several samples and store their ECAPA embeddings in Chroma."""
         tts.speak(
-            "Let's set up my voice recognition, Karan. "
-            f"I'll ask you to read a sentence {config.ENROLL_SAMPLES} times. "
-            "Please speak clearly."
+            f"We gaan mijn stemherkenning instellen, {config.OWNER_NAME}. "
+            f"Ik vraag je {config.ENROLL_SAMPLES} zinnen voor te lezen. "
+            "Spreek rustig en duidelijk."
         )
 
-        sentences = [
-            "My name is Karan and JARVIS is my personal assistant.",
-            "Hey JARVIS, this is Karan speaking.",
-            "JARVIS, remember the sound of my voice.",
-            "I am the only person who can command JARVIS.",
-            "This is Karan, confirming my identity.",
+        zinnen = [
+            f"Mijn naam is {config.OWNER_NAME} en JARVIS is mijn assistent.",
+            f"Hey JARVIS, je spreekt met {config.OWNER_NAME}.",
+            "JARVIS, onthoud hoe mijn stem klinkt.",
+            "Ik ben de enige die JARVIS opdrachten mag geven.",
+            f"Dit is {config.OWNER_NAME}, ik bevestig mijn identiteit.",
         ]
 
         for i in range(config.ENROLL_SAMPLES):
-            sentence = sentences[i % len(sentences)]
-            tts.speak(f"Sample {i + 1}. Please say: {sentence}")
-            print(f"🎙️  Recording sample {i + 1}/{config.ENROLL_SAMPLES}...")
+            zin = zinnen[i % len(zinnen)]
+            tts.speak(f"Opname {i + 1}. Zeg: {zin}")
+            print(f"🎙️  Opname {i + 1}/{config.ENROLL_SAMPLES}…")
 
             audio = self._record_sample()
             embedding = self.encoder.embed(audio)
-            self.store.add_voiceprint(embedding, sample_id=f"karan_{i}")
-            print(f"   ✅ Sample {i + 1} stored in ChromaDB.")
+            self.store.add_voiceprint(embedding, sample_id=f"{config.OWNER_NAME.lower()}_{i}")
+            print(f"   ✅ Opname {i + 1} opgeslagen.")
 
-        tts.speak("Perfect. Your voiceprint is saved. I'll recognize you from now on.")
-        print("✅ Enrollment complete —", config.ENROLL_SAMPLES, "ECAPA vectors stored.")
+        tts.speak("Gelukt. Je stemafdruk is opgeslagen; ik herken je voortaan.")
+        print(f"✅ Klaar — {config.ENROLL_SAMPLES} stemvectoren opgeslagen.")

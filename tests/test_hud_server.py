@@ -98,9 +98,43 @@ def test_lege_invoer_doet_niets(client):
     server.brain.use(config.PRIMARY_BACKEND)
 
 
-def test_spraak_meldt_dat_het_nog_niet_kan(client):
+def test_ptt_zonder_spraak_meldt_dat_netjes(client):
+    assert server.voice is None
     with client.websocket_connect("/ws") as ws:
         ws.receive_json(); ws.receive_json()
         ws.send_json({"type": "ptt_start"})
         msg = ws.receive_json()
-        assert msg["type"] == "error" and "fase 2" in msg["text"]
+        assert msg["type"] == "error" and "--no-voice" in msg["text"]
+
+
+def test_ptt_met_spraak_vraagt_de_lus_te_luisteren(client, monkeypatch):
+    class NepLus:
+        ready = True
+        error = None
+        tts = None
+        def __init__(self): self.gevraagd = False
+        def request_listen(self): self.gevraagd = True
+
+    lus = NepLus()
+    monkeypatch.setattr(server, "voice", lus)
+
+    with client.websocket_connect("/ws") as ws:
+        ws.receive_json(); ws.receive_json()
+        ws.send_json({"type": "ptt_start"})
+        ws.send_json({"type": "backend", "name": "nvidia"})
+        assert ws.receive_json()["type"] == "backend"   # geen foutmelding ertussen
+    assert lus.gevraagd is True
+    server.brain.use(config.PRIMARY_BACKEND)
+
+
+def test_spraakstatus_staat_in_backends(client, monkeypatch):
+    assert client.get("/api/backends").json()["voice"]["enabled"] is False
+
+    class NepLus:
+        ready = True
+        error = None
+        class tts: name = "piper"
+    monkeypatch.setattr(server, "voice", NepLus())
+
+    stem = client.get("/api/backends").json()["voice"]
+    assert stem == {"enabled": True, "ready": True, "engine": "piper", "error": None}

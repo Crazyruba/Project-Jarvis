@@ -17,7 +17,7 @@ def main():
     parser.add_argument("--host", default=config.HUD_HOST)
     parser.add_argument("--port", type=int, default=config.HUD_PORT)
     parser.add_argument("--no-voice", action="store_true",
-                        help="start zonder de voice-loop (standaard in fase 1)")
+                        help="start zonder microfoon: alleen typen")
     parser.add_argument("--reload", action="store_true", help="herlaad bij codewijziging")
     args = parser.parse_args()
 
@@ -39,8 +39,23 @@ def main():
             print("   Oplossing: pip install 'uvicorn[standard]'")
             sys.exit(1)
 
-    if not args.no_voice:
-        print("ℹ️  De voice-loop komt in fase 2 — de HUD start voorlopig zonder microfoon.")
+    if args.reload and not args.no_voice:
+        print("ℹ️  --reload start een subproces, waar de spraakthread niet bij kan.")
+        print("   Spraak wordt uitgezet; gebruik --reload alleen om de HUD te bouwen.")
+        args.no_voice = True
+
+    if args.no_voice:
+        print("🔇 Spraak staat uit: alleen typen.")
+    else:
+        # De modellen laden in de achtergrondthread, zodat de HUD meteen opent.
+        from hud import server as hud_server
+        from hud.events import bus
+        from voice.loop import VoiceLoop
+
+        stem = VoiceLoop(bus=bus, respond=hud_server.respond_from_voice)
+        hud_server.attach_voice(stem)
+        stem.start()
+        print("🎙️  Spraak start op de achtergrond — zeg 'Hey Jarvis' zodra hij klaar is.")
 
     configured = [name for name, cfg in config.BACKENDS.items() if cfg.get("api_key")]
     if not configured:
