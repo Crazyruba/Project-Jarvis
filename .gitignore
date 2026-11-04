@@ -27,6 +27,8 @@ Thumbs.db
 *.sqlite3
 
 # ChromaDB / Vector DB
+data/chroma_voiceprints/
+data/ecapa_model/
 
 
 
@@ -43,8 +45,12 @@ models/
 *.mp3
 
 # Screenshots
+data/screenshots/
 
 # Voice Recognition
+data/voiceprint.npy
+data/last_greeting.txt
+data/piper/
 
 
 # Temporary Files
@@ -78,6 +84,8 @@ htmlcov/
 .cache/
 
 # Secrets
+auth/token.json
+auth/credentials.json
 *.pem
 *.key
 *.crt

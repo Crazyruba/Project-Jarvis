@@ -5,7 +5,7 @@ Entry point: wires together brain, memory, tools, voice, and speaker ID.
 Pipeline:
   😴 Wake word ("Hey Jarvis")  ->  🔔 "Yes?"  ->  🗣️ Conversation mode
   In conversation mode:
-    record -> verify it's Karan -> transcribe -> agent -> speak
+    opnemen -> eigenaar verifiëren -> transcriberen -> agent -> spreken
     -> stay awake for follow-ups -> silence returns to sleep
 """
 
@@ -92,7 +92,7 @@ def main():
     verifier = SpeakerVerifier(store)
     wake = WakeWordListener()
 
-    tts.speak("JARVIS is online. Say 'Hey Jarvis' whenever you need me.")
+    tts.speak("JARVIS is online. Zeg 'Hey Jarvis' wanneer je me nodig hebt.")
 
     # 5. Two-state loop:  😴 wake  <->  🗣️ conversation
     try:
@@ -100,7 +100,7 @@ def main():
         while running:
             # ===== 😴 STATE 1: Wait for the wake word =====
             wake.wait_for_wake()
-            tts.speak("Yes?")
+            tts.speak("Ja?")
 
             # ===== 🗣️ STATE 2: Conversation mode =====
             in_conversation = True
@@ -114,15 +114,15 @@ def main():
                 # --- 🎙️ Record (single audio used for verify + transcribe) ---
                 audio = stt.record(config.FOLLOWUP_LISTEN)
 
-                # --- 🔐 Verify it's Karan ---
+                # --- 🔐 Is dit de eigenaar? ---
                 is_karan, score = verifier.verify(audio)
-                status = "Karan ✅" if is_karan else "Unknown ❌"
+                status = f"{config.OWNER_NAME} ✅" if is_karan else "Onbekend ❌"
                 print(f"   🔐 Speaker check: {status} (similarity: {score:.2f})")
 
                 if not is_karan:
                     # Reject only on the first turn; on follow-ups, just sleep quietly
                     if first_turn:
-                        tts.speak("Sorry, I only take commands from Karan.")
+                        tts.speak(f"Sorry, ik neem alleen opdrachten aan van {config.OWNER_NAME}.")
                     in_conversation = False
                     break
 
@@ -146,7 +146,7 @@ def main():
                 if user_input.lower().strip() in {
                     "quit", "exit", "goodbye jarvis", "shut down"
                 }:
-                    tts.speak("Goodbye, Karan!")
+                    tts.speak(f"Tot ziens, {config.OWNER_NAME}!")
                     running = False
                     in_conversation = False
                     break
@@ -163,7 +163,7 @@ def main():
     except Exception as e:
         print(f"\n❌ Unexpected error: {e}")
         try:
-            tts.speak("Something went wrong, Karan. Shutting down.")
+            tts.speak(f"Er ging iets mis, {config.OWNER_NAME}. Ik sluit af.")
         except Exception:
             pass
     finally:

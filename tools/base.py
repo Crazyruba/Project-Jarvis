@@ -33,7 +33,7 @@ class ToolRegistry:
         if tool["sensitive"] and self.permissions:
             approved = self.permissions.request(name, args)
             if not approved:
-                return f"Action '{name}' was cancelled by Karan."
+                return f"Actie '{name}' is geannuleerd."
 
         try:
             return tool["func"](**args)

@@ -4,7 +4,7 @@ import config
 
 
 def maybe_greet(tts):
-    """Say 'Good morning, Karan' only once per day."""
+    """Groet de eigenaar hooguit één keer per dag."""
     today = datetime.now().strftime("%Y-%m-%d")
     last = None
 
@@ -21,7 +21,7 @@ def maybe_greet(tts):
         else:
             part = "Good evening"
 
-        tts.speak(f"{part}, Karan! I'm online and ready to help.")
+        tts.speak(f"{part}, {config.OWNER_NAME}! Ik ben online en klaar om te helpen.")
 
         os.makedirs(os.path.dirname(config.GREETING_STATE_PATH), exist_ok=True)
         with open(config.GREETING_STATE_PATH, "w") as f:

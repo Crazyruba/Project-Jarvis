@@ -2,7 +2,7 @@ import sqlite3
 
 
 class LongTermMemory:
-    """Permanent facts about Karan (facts, preferences, projects, goals)."""
+    """Blijvende feiten over de eigenaar (feiten, voorkeuren, projecten, doelen)."""
 
     def __init__(self, conn: sqlite3.Connection):
         self.conn = conn
@@ -28,14 +28,14 @@ class LongTermMemory:
             (content,),
         ).fetchone()
         if existing:
-            return "I already remember that."
+            return "Dat weet ik al."
 
         self.conn.execute(
             "INSERT INTO long_term (memory_type, content) VALUES (?, ?)",
             (memory_type, content),
         )
         self.conn.commit()
-        return "Saved."
+        return "Opgeslagen."
 
     def get_all(self, limit: int = 50):
         rows = self.conn.execute(

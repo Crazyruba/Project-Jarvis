@@ -1,16 +1,27 @@
-google-genai>=0.3.0 
+# --- HUD ---
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+openai>=1.40.0
+
+# --- Kern ---
 python-dotenv>=1.0.0
 requests>=2.31.0
-pyautogui>=0.9.54
+numpy>=1.24.0
+
+# --- Legacy brein (vervalt in fase 3) ---
+google-genai>=0.3.0
+
+# --- Spraak ---
 faster-whisper>=1.0.0
 sounddevice>=0.4.6
 scipy>=1.11.0
 pyttsx3>=2.90
-numpy>=1.24.0
 openwakeword>=0.6.0
-resemblyzer>=0.1.1
-librosa>=0.10.0
-chromadb>=0.4.22
-resemblyzer>=0.1.1
 onnxruntime
+librosa>=0.10.0
 speechbrain
+resemblyzer>=0.1.1
+chromadb>=0.4.22
+
+# --- Tools ---
+pyautogui>=0.9.54

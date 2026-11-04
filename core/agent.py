@@ -17,13 +17,18 @@ class Agent:
 
         # Build the fresh system prompt WITH memory injected
         memory_context = self.memory.build_memory_context()
-        system_prompt = config.SYSTEM_PROMPT.format(memory_context=memory_context)
+        system_prompt = config.SYSTEM_PROMPT.format(
+            owner=config.OWNER_NAME, memory_context=memory_context
+        )
 
         for step in range(config.MAX_STEPS):
             response = self.llm.think(self.memory.working.get(), system_prompt)
 
             if response is None:
-                return "I couldn't reach my brain just now, Karan. Check the API/quota."
+                return (
+                    f"Ik kon mijn brein even niet bereiken, {config.OWNER_NAME}. "
+                    "Controleer de API of het quotum."
+                )
 
             candidate = response.candidates[0]
             parts = candidate.content.parts
@@ -67,4 +72,7 @@ class Agent:
             self.memory.log_interaction("jarvis", final_text)
             return final_text
 
-        return "I hit my step limit on that one, Karan. Want me to keep going?"
+        return (
+            f"Ik liep tegen mijn stappenlimiet aan, {config.OWNER_NAME}. "
+            "Zal ik doorgaan?"
+        )

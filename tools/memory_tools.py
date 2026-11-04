@@ -11,8 +11,8 @@ def register_memory_tools(registry, memory_manager):
         name="save_memory",
         func=save_memory,
         description=(
-            "Save an important, durable piece of information about Karan "
-            "(a fact, preference, project, or goal). Use this whenever Karan "
+            "Sla belangrijke, blijvende informatie over de eigenaar op "
+            "(een feit, voorkeur, project of doel). Gebruik dit wanneer hij "
             "shares something worth remembering long-term."
         ),
         parameters={
@@ -34,5 +34,5 @@ def register_memory_tools(registry, memory_manager):
     registry.register(
         name="recall_memory",
         func=recall_memory,
-        description="Retrieve everything JARVIS remembers about Karan.",
+        description="Haal op wat JARVIS zich van de eigenaar herinnert.",
     )

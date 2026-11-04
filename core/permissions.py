@@ -11,10 +11,10 @@ class PermissionManager:
 
     def _default_confirm(self, message: str) -> bool:
         answer = input(f"\n⚠️  {message} (yes/no): ").strip().lower()
-        return answer in {"yes", "y", "yeah", "yep", "confirm", "ok"}
+        return answer in {"ja", "jawel", "doe maar", "ok", "oke", "oké", "yes", "y"}
 
     def request(self, tool_name: str, args: dict) -> bool:
-        """Ask Karan to approve a sensitive action."""
+        """Vraag de eigenaar om een gevoelige actie goed te keuren."""
         pretty_args = ", ".join(f"{k}={v}" for k, v in args.items())
-        message = f"JARVIS wants to run '{tool_name}' ({pretty_args}). Allow this?"
+        message = f"JARVIS wil '{tool_name}' uitvoeren ({pretty_args}). Toestaan?"
         return self.confirm_func(message)
