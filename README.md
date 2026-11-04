@@ -1,221 +1,154 @@
-# 🦾 JARVIS — A Personal Voice Assistant Built From Scratch
+# 🦾 JARVIS — Holografische persoonlijke assistent
 
-> A hands-free, voice-controlled AI agent that lives on your laptop — with long-term memory, tool-calling capabilities, and **biometric voice verification** so it responds only to its owner.
+> Een handsfree spraakassistent met een holografische interface, die op je eigen
+> laptop draait: langetermijngeheugen, tools, en biometrische stemherkenning
+> zodat hij alleen naar zijn eigenaar luistert.
 
-JARVIS is a **from-scratch agent framework** (no LangChain, no AutoGen) built to learn and demonstrate the core engineering behind modern AI assistants: the ReAct reasoning loop, tool orchestration, layered memory, a local voice pipeline, and speaker recognition.
-
----
-
-## ✨ Features
-
-- 🧠 **Custom Agent Framework** — a hand-built ReAct loop (Reason → Act → Observe) with an extensible tool registry
-- 💾 **3-Layer Memory** — working (session), short-term (recent), and long-term (persistent facts) memory
-- 🎙️ **Fully Hands-Free** — wake on *"Hey Jarvis"*, then talk naturally
-- 🔐 **Voice Biometrics** — ECAPA-TDNN speaker verification ensures **only the owner** can issue commands
-- 🗣️ **Conversation Mode** — ask follow-ups without repeating the wake word
-- 🔊 **Local Voice Pipeline** — offline speech-to-text (Whisper) and text-to-speech
-- 🛡️ **Human-in-the-Loop Safety** — asks for spoken confirmation before sensitive actions (writing files, etc.)
-- 🔧 **Real Capabilities** — file operations, web search, and system control (screenshots, volume, lock)
+JARVIS is een **zelfgebouwd agent-framework** (geen LangChain, geen AutoGen) om de
+techniek achter moderne AI-assistenten van de grond af te leren: de ReAct-lus,
+toolorkestratie, gelaagd geheugen, een lokale spraakpijplijn en sprekerherkenning —
+met daarbovenop een holografische HUD.
 
 ---
 
-## 🏗️ Architecture
+## ✨ Wat het doet
 
-```
-                        JARVIS
-                          🧠
-                      Agent Core
-                  (ReAct + Gemini)
-                          │
-        ┌─────────────────┼─────────────────┐
-        │                 │                 │
-     Memory             Tools             Voice
-        │                 │                 │
-   SQLite +          Files / Web       Whisper (STT)
-   ChromaDB          System Ctrl       TTS Engine
-                                       Wake Word
-                                       ECAPA Speaker ID
-```
-
-**Interaction flow:**
-
-```
-😴 Idle  →  "Hey Jarvis"  →  🔔 "Yes?"  →  🎙️ Record
-   →  🔐 Verify it's the owner  →  🧠 Agent reasons + uses tools
-   →  🔊 Speaks reply  →  🗣️ Waits for follow-up  →  😴 (silence → sleep)
-```
+- 🪞 **Holografische interface** — procedureel 3D-hologram in de browser, dat
+  meebeweegt met de stem en de toestand toont: ONLINE · LUISTERT · DENKT · SPREEKT
+- 🧠 **Eigen agent-framework** — handgebouwde ReAct-lus met uitbreidbare toolregistry
+- 🔀 **Vier breinen, één protocol** — Nous Portal, NVIDIA NIM, OpenClaw en Hermes
+  Agent, allemaal via dezelfde OpenAI-compatibele client
+- 💾 **3-laags geheugen** — werk-, korte- en langetermijngeheugen
+- 🎙️ **Handsfree** — wakker op *"Hey Jarvis"*, daarna gewoon doorpraten
+- 🔐 **Stembiometrie** — ECAPA-TDNN-sprekerverificatie als toegangsdrempel
+- 🛡️ **Bevestiging vooraf** — gevoelige acties vragen eerst toestemming
 
 ---
 
-## 🧰 Tech Stack
+## 🏗️ Architectuur
 
-| Layer | Technology |
-|-------|-----------|
-| **Language** | Python 3.11+ |
-| **Reasoning (LLM)** | Google Gemini API (function-calling) |
-| **Wake Word** | openWakeWord (ONNX) |
-| **Speech-to-Text** | faster-whisper (offline) |
-| **Text-to-Speech** | pyttsx3 / edge-tts |
-| **Speaker Verification** | SpeechBrain ECAPA-TDNN |
-| **Vector Store** | ChromaDB (cosine similarity) |
-| **Short/Long Memory** | SQLite + ChromaDB |
-| **Audio I/O** | sounddevice |
+```
+        ┌──────────── browser op localhost:7332 ────────────┐
+        │  HOLO-HUD   hologram · status · ondertitels        │
+        └───────────────────────▲───────────────────────────┘
+                                │  WebSocket
+        ┌───────────────────────┴───────────────────────────┐
+        │  JARVIS-CORE   voice · router · geheugen           │
+        └──┬───────────┬────────────┬──────────────┬────────┘
+           ▼           ▼            ▼              ▼
+     Nous Portal   OpenClaw    Hermes Agent   Claude Code
+     + NVIDIA NIM  (handen)    (leert bij)    (bouwt de repo)
+```
+
+Het inzicht dat dit draagt: **Nous Portal, NVIDIA NIM en de OpenClaw Gateway
+spreken alle drie het OpenAI chat-protocol.** Eén client met een andere
+`base_url` volstaat dus. Zie [`docs/architecture.md`](docs/architecture.md).
 
 ---
 
-## 📁 Project Structure
+## 🚀 Aan de slag
 
-```
-Project-Jarvis/
-├── main.py                 # Entry point + conversation loop
-├── config.py               # All settings
-├── requirements.txt
-├── .env                    # API keys (not committed)
-│
-├── core/                   # The brain
-│   ├── llm.py              # Gemini wrapper
-│   ├── agent.py            # ReAct loop
-│   └── permissions.py      # Confirm-before-sensitive-actions
-│
-├── memory/                 # Memory system
-│   ├── manager.py
-│   ├── working_memory.py
-│   ├── short_term_memory.py
-│   └── long_term_memory.py
-│
-├── tools/                  # Capabilities
-│   ├── base.py             # Tool registry
-│   ├── basic_tools.py      # time, open app
-│   ├── file_tools.py       # read/write/search files
-│   ├── web_tools.py        # web search
-│   ├── system_tools.py     # screenshot, volume, lock
-│   └── memory_tools.py     # save/recall memory
-│
-├── voice/                  # Voice pipeline
-│   ├── stt.py              # speech → text
-│   ├── tts.py              # text → speech
-│   ├── wake_word.py        # "Hey Jarvis" listener
-│   ├── ecapa_encoder.py    # ECAPA voiceprint engine
-│   ├── voiceprint_store.py # ChromaDB voiceprint store
-│   ├── enrollment.py       # one-time voice setup
-│   ├── speaker_id.py       # "is this the owner?" check
-│   └── greeting.py         # once-a-day greeting
-│
-└── data/                   # Auto-generated (memory, voiceprints, screenshots)
-```
-
----
-
-## 🚀 Getting Started
-
-### 1. Clone & set up environment
+### 1. Omgeving
 
 ```bash
-git clone <your-repo-url>
+git clone <repo-url>
 cd Project-Jarvis
 python -m venv venv
-venv/Scripts/activate.ps1      # Windows
-# source venv/bin/activate   # macOS/Linux
-```
-
-### 2. Install dependencies
-
-```bash
+source venv/bin/activate        # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-### 3. Download voice models (one-time)
+### 2. Sleutels
 
-```bash
-python -c "import openwakeword.utils; openwakeword.utils.download_models()"
-```
-
-### 4. Add your API key
-
-Create a `.env` file in the project root:
+Maak een `.env` in de projectmap. Eén backend is genoeg om te beginnen:
 
 ```env
-GEMINI_API_KEY=your_gemini_api_key
-GOOGLE_SEARCH_API_KEY=your_search_api_key      # optional (web search)
-GOOGLE_SEARCH_ENGINE_ID=your_cx_id             # optional (web search)
+OWNER_NAME=Ruben
+
+# Nous Research Portal — https://portal.nousresearch.com
+NOUS_API_KEY=sk-nous-...
+
+# NVIDIA NIM — https://build.nvidia.com (gratis credits)
+NVIDIA_API_KEY=nvapi-...
+
+# OpenClaw Gateway (fase 4, lokaal)
+# OPENCLAW_GATEWAY_TOKEN=...
 ```
 
-> Get a free Gemini key at https://aistudio.google.com/apikey.
-
-### 5. Run
+### 3. Starten
 
 ```bash
-python main.py
+python run_hud.py --no-voice
 ```
 
-On first launch, JARVIS will guide you through a **one-time voice enrollment** (reads a few sentences to build your voiceprint). After that, just say **"Hey Jarvis"**! 🎙️
+Open daarna **http://127.0.0.1:7332**. Typ een bericht; het tandwiel rechtsboven
+wisselt van brein en test de backends.
+
+> De spraakpijplijn (wake word, Nederlandse herkenning, Piper-stem) komt in
+> fase 2 — zie [`docs/roadmap.md`](docs/roadmap.md).
 
 ---
 
-## 💬 Example Commands
+## ⌨️ Sneltoetsen
+
+| Toets | Doet |
+|---|---|
+| `/` | naar het invoerveld |
+| `spatie` (ingedrukt) | praten (fase 2) |
+| `Esc` | antwoord afbreken |
+
+---
+
+## 📁 Indeling
 
 ```
-"Hey Jarvis"  →  "What time is it?"
-              →  "Take a screenshot"
-              →  "Search the web for CrewAI"
-              →  "Remember that I'm building Project Jarvis"
-              →  "What do you know about me?"
-              →  "Write a hello world script to test.py"   (asks to confirm)
+run_hud.py          entrypoint voor de HUD
+hud/                server, eventbus en de interface
+core/               providers, router, agent, permissies
+memory/             werk- · korte- · langetermijngeheugen
+tools/              toolregistry en tools
+voice/              wake word, STT, TTS, sprekerherkenning
+docs/               architectuur en roadmap
 ```
 
 ---
 
-## 🗺️ Development Roadmap
+## 🗺️ Roadmap
 
-The project was built in independent, working phases:
+- ✅ **Fase 1** — holografische HUD + providerlaag (Nous / NVIDIA / OpenClaw)
+- ⏳ **Fase 2** — Nederlandse spraak: Whisper `nl` + Piper-stem
+- ⏳ **Fase 3** — tools op OpenAI tool-calling, Gemini-pad eruit
+- ⏳ **Fase 4** — OpenClaw als handen
+- ⏳ **Fase 5** — Hermes Agent als lerend geheugen
+- ⏳ **Fase 6** — systemd-units, altijd aan
 
-- ✅ **Phase 1** — Agent framework (ReAct loop + tool registry)
-- ✅ **Phase 2** — 3-layer memory system
-- ✅ **Phase 3** — Tools + permission layer
-- ⏳ **Phase 4** — Gmail + Calendar (planned)
-- ✅ **Phase 5** — Voice pipeline (STT + TTS)
-- ✅ **Phase 6** — Wake word + speaker verification
-- 🔨 **Phase 7** — Polish: conversation mode, logging, auto-start
-
-**Future ideas:** semantic memory recall (RAG), voice-activity detection (VAD), acoustic echo cancellation, and autonomous multi-step task planning.
+Details in [`docs/roadmap.md`](docs/roadmap.md).
 
 ---
 
-## 🎓 What This Project Demonstrates
+## 🛠️ Problemen oplossen
 
-- Building an **agent framework** from first principles
-- **Function-calling / tool orchestration** with an LLM
-- **Vector databases** and cosine-similarity search (for both memory *and* voice biometrics)
-- A complete **local voice AI pipeline**
-- **Speaker verification** using production-grade embeddings (ECAPA-TDNN)
-- Clean, modular **software architecture** designed to scale
+| Probleem | Oplossing |
+|---|---|
+| HUD blijft op "verbinding verbroken" | `pip install 'uvicorn[standard]'` — zonder WebSocket-bibliotheek geeft `/ws` een 404 |
+| "geen API-sleutel ingesteld" | Zet `NOUS_API_KEY` of `NVIDIA_API_KEY` in `.env` |
+| Hologram ontbreekt | Geen WebGL; de HUD werkt verder gewoon |
+| Ventilator draait hard | Zet **lite** aan in het tandwiel |
+| Wake word gaat niet af | Verlaag `WAKE_THRESHOLD` in `config.py` |
+| Herkent jouw stem niet | Verlaag `SPEAKER_THRESHOLD`; opnieuw inspreken in een stille kamer |
 
----
-
-## 🛠️ Troubleshooting
-
-| Issue | Fix |
-|-------|-----|
-| `429 RESOURCE_EXHAUSTED` | Gemini quota — check usage / wait |
-| Wake word won't trigger | Lower `WAKE_THRESHOLD` in `config.py` |
-| Rejects your voice | Lower `SPEAKER_THRESHOLD`; re-enroll in a quiet room |
-| SpeechBrain symlink error (Windows) | Use `LocalStrategy.COPY` or enable Developer Mode |
-| Auto-triggers after speaking | Use headphones (avoids mic feedback) |
-
-> **Re-enroll your voice:** delete the `data/chroma_voiceprints/` folder and restart.
+> Opnieuw inspreken: verwijder `data/chroma_voiceprints/` en start opnieuw.
 
 ---
 
-## ⚠️ Disclaimer
+## ⚠️ Let op
 
-JARVIS is a **personal learning project**. The voice verification is a friendly access gate, **not** fortress-grade security. Use responsibly.
-
----
-
-## 📜 License
-
-MIT License — free to use, learn from, and build upon.
+De stemverificatie is een **vriendelijke drempel, geen slot**. En houd de HUD en
+de OpenClaw Gateway op loopback: een gateway-token geldt als volledige
+operator-toegang.
 
 ---
 
-*Built with curiosity and a lot of debugging. 🚀*
+## 📜 Licentie
+
+MIT.
