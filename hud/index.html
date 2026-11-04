@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="nl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <title>J.A.R.V.I.S HUD</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='11' fill='none' stroke='%234fd8ff' stroke-width='3'/><circle cx='16' cy='16' r='4' fill='%234fd8ff'/></svg>" />
+  </head>
+  <body>
+    <canvas id="scene" aria-hidden="true"></canvas>
+
+    <header class="brand">
+      <div class="brand-title">J.A.R.V.I.S</div>
+      <div class="brand-sub">OpenClaw holo-interface</div>
+    </header>
+
+    <section class="status" aria-label="Status">
+      <div class="status-row" data-key="online"><span class="dot"></span><span class="label">Online</span><span class="value" id="status-online">offline</span></div>
+      <div class="status-row" data-key="listening"><span class="dot"></span><span class="label">Luistert</span></div>
+      <div class="status-row" data-key="thinking"><span class="dot"></span><span class="label">Denkt</span></div>
+      <div class="status-row" data-key="speaking"><span class="dot"></span><span class="label">Spreekt</span></div>
+    </section>
+
+    <button class="icon-btn settings-btn" id="settings-btn" title="Instellingen" aria-label="Instellingen">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+    </button>
+
+    <footer class="console">
+      <p class="subtitle" id="subtitle" aria-live="polite"></p>
+      <div class="controls">
+        <form id="text-form" class="text-form" autocomplete="off">
+          <input id="text-input" type="text" placeholder="Typ een bericht, of houd spatie ingedrukt om te praten" aria-label="Bericht aan Jarvis" />
+        </form>
+        <button class="mic-btn" id="mic-btn" title="Praat met Jarvis (spatie)" aria-label="Praat met Jarvis">
+          <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+        </button>
+      </div>
+    </footer>
+
+    <dialog id="settings" class="settings">
+      <form method="dialog" id="settings-form">
+        <h2>Instellingen</h2>
+        <label>Gateway URL<input name="url" type="text" spellcheck="false" /></label>
+        <label>Gateway token<input name="token" type="password" spellcheck="false" placeholder="openclaw config get gateway.auth.token" /></label>
+        <label>Taal<select name="lang"><option value="nl-NL">Nederlands</option><option value="en-US">English (US)</option><option value="en-GB">English (UK)</option><option value="de-DE">Deutsch</option></select></label>
+        <label class="check"><input name="voice" type="checkbox" /> Antwoorden uitspreken</label>
+        <p class="hint" id="pairing-hint"></p>
+        <div class="actions">
+          <button value="cancel" type="submit" class="ghost">Annuleren</button>
+          <button value="save" type="submit">Opslaan en verbinden</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,22 @@
+{
+  "name": "jarvis-hud",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Holografische Jarvis HUD voor OpenClaw (three.js + Web Speech)",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@noble/ed25519": "3.0.0",
+    "three": "0.181.2"
+  },
+  "devDependencies": {
+    "@types/three": "0.181.0",
+    "typescript": "5.9.3",
+    "vite": "7.2.4"
+  }
+}
