@@ -136,3 +136,83 @@ def test_groet_werkt_ook_als_opslaan_mislukt(tmp_path, monkeypatch):
     gezegd = []
     assert greeting.groet_eenmaal_per_dag(gezegd.append) is True
     assert len(gezegd) == 1
+
+
+# --- ontbrekend wake word ---------------------------------------------------
+# openwakeword eist op Linux tflite-runtime, waarvan geen wheels bestaan voor
+# recente Python-versies. Zonder dat pakket moet alles behalve "Hey Jarvis"
+# gewoon blijven werken.
+
+def test_beschikbaarheid_wordt_gedetecteerd(monkeypatch):
+    import importlib.util
+
+    from voice.listener import WakeWord
+
+    monkeypatch.setattr(importlib.util, "find_spec", lambda naam: None)
+    assert WakeWord.beschikbaar() is False
+
+    monkeypatch.setattr(importlib.util, "find_spec", lambda naam: object())
+    assert WakeWord.beschikbaar() is True
+
+
+def test_ontbrekend_pakket_geeft_bruikbare_uitleg(monkeypatch):
+    import builtins
+
+    from voice.listener import WakeWord, WakeWordNietBeschikbaar
+
+    echte_import = builtins.__import__
+
+    def zonder_oww(naam, *args, **kwargs):
+        if naam.startswith("openwakeword"):
+            raise ImportError("No module named 'openwakeword'")
+        return echte_import(naam, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", zonder_oww)
+
+    with pytest.raises(WakeWordNietBeschikbaar) as excinfo:
+        WakeWord()
+
+    melding = str(excinfo.value)
+    assert "--no-deps openwakeword" in melding      # het commando dat helpt
+    assert "tflite" in melding                      # en waarom het nodig is
+
+
+def test_spraaklus_valt_terug_op_push_to_talk(monkeypatch):
+    """Zonder wake word moet de lus blijven draaien op push-to-talk alleen."""
+    from hud.events import EventBus
+    from voice.listener import WakeWordNietBeschikbaar
+    from voice.loop import VoiceLoop
+
+    bus = EventBus()
+    gemeld = []
+    bus.publish_from_thread = lambda kind, payload=None: gemeld.append(
+        {"type": kind, **(payload or {})})
+    bus.set_state_from_thread = lambda state: None
+
+    lus = VoiceLoop(bus=bus, respond=lambda t: "antwoord")
+
+    # Doe alsof alles laadt behalve het wake word.
+    class NepStore:
+        def is_ingesproken(self): return True
+
+    class NepTTS:
+        name = "nep"
+
+    monkeypatch.setattr("voice.tts.TextToSpeech", lambda *a, **k: NepTTS())
+    monkeypatch.setattr("voice.stt.SpeechToText", lambda *a, **k: object())
+    monkeypatch.setattr("voice.listener.Microfoon", lambda *a, **k: object())
+    monkeypatch.setattr("voice.voiceprint.VoiceprintStore", lambda *a, **k: NepStore())
+    monkeypatch.setattr("voice.encoder.get_encoder", lambda: object())
+    monkeypatch.setattr("voice.listener.WakeWord",
+                        lambda *a, **k: (_ for _ in ()).throw(
+                            WakeWordNietBeschikbaar("openwakeword ontbreekt")))
+
+    assert lus._load() is True          # laden slaagt alsnog
+    assert lus.wake is None
+    assert lus.ready is True
+
+    fouten = [g for g in gemeld if g["type"] == "error"]
+    assert any("spatiebalk" in f["text"] for f in fouten)
+
+    klaar = [g for g in gemeld if g["type"] == "voice"]
+    assert klaar[0]["wake_word"] is False

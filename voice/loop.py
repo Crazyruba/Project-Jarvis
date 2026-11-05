@@ -53,6 +53,7 @@ class VoiceLoop:
         self.tts = None
         self.mic = None
         self.wake = None
+        self.waarschuwing: str | None = None
         self.store = None
         self.encoder = None
         self.error: str | None = None
@@ -92,7 +93,7 @@ class VoiceLoop:
     # -- opstarten ---------------------------------------------------------
     def _load(self) -> bool:
         from voice.encoder import get_encoder
-        from voice.listener import Microfoon, WakeWord
+        from voice.listener import Microfoon, WakeWord, WakeWordNietBeschikbaar
         from voice.stt import SpeechToText
         from voice.tts import TextToSpeech
         from voice.voiceprint import VoiceprintStore
@@ -114,7 +115,19 @@ class VoiceLoop:
 
             self.store = store
             self.encoder = get_encoder()
-            self.wake = WakeWord()
+
+            # Zonder wake word werkt de rest gewoon; praten gaat dan via
+            # push-to-talk. Dat is beter dan helemaal geen spraak.
+            try:
+                self.wake = WakeWord()
+            except WakeWordNietBeschikbaar as e:
+                self.wake = None
+                self.waarschuwing = str(e).splitlines()[0]
+                print(f"⚠️  {e}")
+                self.bus.publish_from_thread("error", {
+                    "text": "Geen wake word beschikbaar — houd de spatiebalk "
+                            "ingedrukt om te praten."
+                })
         except Exception as e:
             self.error = f"Spraak kon niet starten: {e}"
             self.bus.publish_from_thread("error", {"text": self.error})
@@ -122,8 +135,13 @@ class VoiceLoop:
             return False
 
         self._ready.set()
-        self.bus.publish_from_thread("voice", {"ready": True, "engine": self.tts.name})
-        print(f"✅ Spraak klaar (stem: {self.tts.name}).")
+        self.bus.publish_from_thread("voice", {
+            "ready": True,
+            "engine": self.tts.name,
+            "wake_word": self.wake is not None,
+        })
+        hoe = "zeg 'Hey Jarvis'" if self.wake else "houd de spatiebalk ingedrukt"
+        print(f"✅ Spraak klaar (stem: {self.tts.name}) — {hoe}.")
         return True
 
     # -- de lus ------------------------------------------------------------
@@ -137,14 +155,20 @@ class VoiceLoop:
             # Wachten op "Hey Jarvis", of op push-to-talk uit de HUD.
             via_ptt = self._ptt.is_set()
             if not via_ptt:
-                gehoord = self.wake.wacht(
-                    should_stop=lambda: self._ptt.is_set() or self._stop.is_set()
-                )
-                if self._stop.is_set():
-                    break
-                via_ptt = self._ptt.is_set()
-                if not gehoord and not via_ptt:
-                    continue
+                if self.wake is None:
+                    # Alleen push-to-talk: wachten tot de HUD erom vraagt.
+                    if not self._ptt.wait(timeout=0.5):
+                        continue
+                    via_ptt = True
+                else:
+                    gehoord = self.wake.wacht(
+                        should_stop=lambda: self._ptt.is_set() or self._stop.is_set()
+                    )
+                    if self._stop.is_set():
+                        break
+                    via_ptt = self._ptt.is_set()
+                    if not gehoord and not via_ptt:
+                        continue
 
             self._ptt.clear()
             if not via_ptt:

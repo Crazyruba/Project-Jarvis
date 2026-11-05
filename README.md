@@ -57,8 +57,28 @@ git clone <repo-url>
 cd Project-Jarvis
 python -m venv venv
 source venv/bin/activate        # Windows: venv\Scripts\activate
-pip install -r requirements.txt
+./install.sh                    # of --no-voice voor alleen de HUD
 ```
+
+<details>
+<summary>Liever handmatig installeren?</summary>
+
+```bash
+pip install -r requirements.txt
+pip install --no-deps openwakeword      # let op: --no-deps
+```
+
+Die tweede regel heeft uitleg nodig. `openwakeword` eist op Linux
+`tflite-runtime`, en daarvan bestaan geen wheels voor recente Python-versies —
+dan faalt de installatie met *"No matching distribution found for
+tflite-runtime"*. JARVIS draait het wake word-model via ONNX en gebruikt tflite
+nergens voor, dus `--no-deps` slaat die eis over. De echte afhankelijkheden van
+openwakeword staan gewoon in `requirements.txt`.
+
+Sla je de tweede regel over, dan werkt alles behalve *"Hey Jarvis"*; praten gaat
+dan met de spatiebalk.
+
+</details>
 
 ### 2. Sleutels
 
@@ -209,6 +229,8 @@ Beide vragen eerst om bevestiging in de HUD. Dat uitzetten kan met
 | Stem klinkt robotachtig | Piper-stem ontbreekt; draai `python -m voice.piper_setup` |
 | Nederlands wordt slecht verstaan | `WHISPER_MODEL=medium` (trager, ~2,5 GB) |
 | Spraak start niet | Eerst `python -m voice.enroll` |
+| `No matching distribution found for tflite-runtime` | `pip install --no-deps openwakeword` — zie *handmatig installeren* hierboven |
+| "Hey Jarvis" doet niets, spatiebalk wel | openwakeword ontbreekt; zelfde oplossing |
 
 > Opnieuw inspreken: verwijder `data/chroma_voiceprints/` en start opnieuw.
 

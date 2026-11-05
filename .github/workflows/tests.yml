@@ -49,6 +49,40 @@ jobs:
         # zodat dit commando lokaal hetzelfde doet als hier.
         run: pytest
 
+  requirements:
+    name: requirements oplosbaar (python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Kan requirements.txt opgelost worden?
+        # Dit vangt een afhankelijkheid die voor deze Python geen enkele
+        # installeerbare versie heeft. Precies dat ging mis met openwakeword,
+        # dat op Linux tflite-runtime eist terwijl daar geen wheels voor zijn.
+        # uv lost op zonder te downloaden, dus dit kost seconden in plaats van
+        # een torch-download.
+        #
+        # Wel naar een echt bestand schrijven: met `-o /dev/null` eindigt uv
+        # met exitcode 2, waarschijnlijk omdat het atomisch schrijft.
+        run: |
+          uv pip compile --python-version ${{ matrix.python }} \
+            requirements.txt -o resolved.txt
+          echo "  $(grep -c '^[a-zA-Z]' resolved.txt) pakketten opgelost"
+
+      - name: En requirements-dev.txt
+        run: |
+          uv pip compile --python-version ${{ matrix.python }} \
+            requirements-dev.txt -o resolved-dev.txt
+          echo "  $(grep -c '^[a-zA-Z]' resolved-dev.txt) pakketten opgelost"
+
   frontend:
     name: HUD-javascript
     runs-on: ubuntu-latest

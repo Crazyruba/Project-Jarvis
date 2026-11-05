@@ -102,6 +102,21 @@ een check dat elk bestand waar `index.html` naar wijst ook echt bestaat.
 De testafhankelijkheden staan apart in `requirements-dev.txt`, zodat CI niet
 torch en chromadb hoeft te installeren voor tests die ze nooit aanraken.
 
+## Bekende valkuil: openwakeword en tflite
+
+`openwakeword` eist op Linux `tflite-runtime`, waarvan geen wheels bestaan voor
+recente Python-versies. `pip install -r requirements.txt` faalde daardoor met
+*"No matching distribution found for tflite-runtime"*.
+
+JARVIS draait het wake word-model via ONNX (`inference_framework="onnx"`) en
+gebruikt tflite nergens voor, dus die eis is overbodig. Opgelost door
+openwakeword met `--no-deps` te installeren en zijn echte afhankelijkheden
+(`tqdm`, `scikit-learn`, `onnxruntime`, `scipy`, `requests`) gewoon in
+`requirements.txt` te zetten. `install.sh` doet beide stappen.
+
+Ontbreekt openwakeword alsnog, dan blijft de rest werken: de spraaklus zet
+zichzelf in push-to-talk en meldt dat in de HUD.
+
 ## Open punten
 
 - Of de `hermes serve`-API OpenAI-compatibel is, is niet bevestigd. Daarom fase 5

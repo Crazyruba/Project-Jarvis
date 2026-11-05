@@ -21,6 +21,10 @@ import numpy as np
 import config
 
 
+class WakeWordNietBeschikbaar(RuntimeError):
+    """openwakeword ontbreekt; praten kan nog wel met push-to-talk."""
+
+
 @dataclass
 class Opname:
     audio: np.ndarray
@@ -117,8 +121,23 @@ class WakeWord:
 
     CHUNK = 1280                    # 80 ms bij 16 kHz, wat openWakeWord wil
 
+    @staticmethod
+    def beschikbaar() -> bool:
+        """Of openwakeword geïnstalleerd is."""
+        import importlib.util
+
+        return importlib.util.find_spec("openwakeword") is not None
+
     def __init__(self, model: str | None = None, drempel: float | None = None):
-        from openwakeword.model import Model
+        try:
+            from openwakeword.model import Model
+        except ImportError as e:
+            raise WakeWordNietBeschikbaar(
+                "openwakeword is niet geïnstalleerd. Installeren met:\n"
+                "    pip install --no-deps openwakeword\n"
+                "(--no-deps omdat het op Linux tflite-runtime eist, dat JARVIS "
+                "niet gebruikt en waarvoor geen wheels bestaan.)"
+            ) from e
 
         self.naam = model or config.WAKE_WORD_MODEL
         self.drempel = config.WAKE_THRESHOLD if drempel is None else drempel
