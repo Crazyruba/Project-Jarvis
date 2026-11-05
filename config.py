@@ -17,8 +17,7 @@ NOUS_API_KEY = os.getenv("NOUS_API_KEY")
 NVIDIA_API_KEY = os.getenv("NVIDIA_API_KEY")
 OPENCLAW_GATEWAY_TOKEN = os.getenv("OPENCLAW_GATEWAY_TOKEN")
 
-# Legacy (fase 3 haalt het Gemini-pad eruit)
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+# Google Search (optioneel, voor de web_search-tool)
 GOOGLE_SEARCH_API_KEY = os.getenv("GOOGLE_SEARCH_API_KEY")
 GOOGLE_SEARCH_ENGINE_ID = os.getenv("GOOGLE_SEARCH_ENGINE_ID")
 
@@ -64,13 +63,14 @@ HUD_PORT = int(os.getenv("HUD_PORT", "7332"))
 HUD_TITLE = "J.A.R.V.I.S"
 HUD_SUBTITLE = "OPENCLAW HOLO-INTERFACE"
 HUD_HISTORY_LIMIT = 20      # aantal beurten dat de HUD meestuurt als context
+CONFIRM_TIMEOUT = 60        # seconden wachten op goedkeuring in de HUD
 
 
 # ---------------------------------------------------------------------------
-# Legacy LLM (Gemini) — vervalt in fase 3
+# Agent
 # ---------------------------------------------------------------------------
-MODEL_NAME = "gemini-3.1-flash-lite"
-MAX_STEPS = 5
+TOOLS_ENABLED = os.getenv("TOOLS_ENABLED", "1") not in {"0", "false", "False"}
+MAX_STEPS = 5               # tool-rondes per vraag
 
 
 # ---------------------------------------------------------------------------

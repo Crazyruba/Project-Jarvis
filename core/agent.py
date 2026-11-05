@@ -1,78 +1,135 @@
-from google.genai import types
+"""
+De ReAct-lus: Redeneren → Handelen → Waarnemen.
+
+Werkt op het OpenAI tool-calling formaat, dus op elke backend die dat spreekt
+(Nous Portal, NVIDIA NIM, OpenClaw). Het antwoord komt als gebeurtenissen naar
+buiten, zodat de HUD tokens kan tonen terwijl ze binnenkomen en kan laten zien
+welke tool draait:
+
+    ("token", "tekst")                     stukje antwoord
+    ("tool", {"name": …, "args": {…}})     tool gaat draaien
+    ("tool_result", {"name": …, …})        tool is klaar
+    ("error", "melding")                   het ging mis
+"""
+
+from __future__ import annotations
+
+import json
+from typing import Iterator
+
 import config
+from core.providers import BackendError
 
 
 class Agent:
-    """ReAct brain with 3-layer memory: Reason -> Act -> Observe."""
+    """Voert tools uit tot het model een echt antwoord geeft."""
 
-    def __init__(self, llm, tools, memory):
+    def __init__(self, llm, tools, memory=None):
         self.llm = llm
         self.tools = tools
-        self.memory = memory  # MemoryManager
+        self.memory = memory
 
-    def run(self, user_input: str) -> str:
-        # Log + add to working memory
-        self.memory.log_interaction("user", user_input)
-        self.memory.working.add_user(user_input)
+    # -- context -----------------------------------------------------------
+    def build_messages(self, user_input: str, history: list[dict] | None = None,
+                       memory_context: str | None = None) -> list[dict]:
+        if memory_context is None and self.memory is not None:
+            memory_context = self.memory.build_memory_context()
 
-        # Build the fresh system prompt WITH memory injected
-        memory_context = self.memory.build_memory_context()
-        system_prompt = config.SYSTEM_PROMPT.format(
-            owner=config.OWNER_NAME, memory_context=memory_context
+        system = config.SYSTEM_PROMPT.format(
+            owner=config.OWNER_NAME,
+            memory_context=memory_context or "Nog geen opgeslagen herinneringen.",
         )
+        messages = [{"role": "system", "content": system}]
+        messages.extend((history or [])[-config.HUD_HISTORY_LIMIT:])
+        messages.append({"role": "user", "content": user_input})
+        return messages
 
-        for step in range(config.MAX_STEPS):
-            response = self.llm.think(self.memory.working.get(), system_prompt)
+    # -- de lus ------------------------------------------------------------
+    def stream(self, user_input: str, history: list[dict] | None = None,
+               memory_context: str | None = None) -> Iterator[tuple[str, object]]:
+        messages = self.build_messages(user_input, history, memory_context)
+        schemas = self.tools.get_schemas() if self.tools else []
 
-            if response is None:
-                return (
-                    f"Ik kon mijn brein even niet bereiken, {config.OWNER_NAME}. "
-                    "Controleer de API of het quotum."
-                )
+        for _ in range(config.MAX_STEPS):
+            tekst: list[str] = []
+            calls: list[dict] = []
 
-            candidate = response.candidates[0]
-            parts = candidate.content.parts
+            try:
+                for kind, value in self.llm.stream_with_tools(messages, schemas):
+                    if kind == "token":
+                        tekst.append(value)
+                        yield "token", value
+                    elif kind == "tool_calls":
+                        calls = value
+            except BackendError as e:
+                yield "error", str(e)
+                return
 
-            # Look for a tool call
-            tool_call = None
-            for part in parts:
-                if hasattr(part, "function_call") and part.function_call:
-                    tool_call = part.function_call
-                    break
+            if not calls:
+                return                      # klaar: dit was het antwoord
 
-            if tool_call:
-                # ---- ACT ----
-                tool_name = tool_call.name
-                args = dict(tool_call.args) if tool_call.args else {}
-                print(f"   🔧 [JARVIS uses tool: {tool_name}({args})]")
+            # Wat het model zei plus de tools die het wil draaien.
+            messages.append({
+                "role": "assistant",
+                "content": "".join(tekst) or None,
+                "tool_calls": [
+                    {
+                        "id": c["id"] or f"call_{i}",
+                        "type": "function",
+                        "function": {"name": c["name"], "arguments": c["arguments"] or "{}"},
+                    }
+                    for i, c in enumerate(calls)
+                ],
+            })
 
-                result = self.tools.execute(tool_name, args)
+            for i, call in enumerate(calls):
+                naam = call["name"]
+                args = _parse_args(call["arguments"])
 
-                # Save request + result into working memory
-                self.memory.working.add_raw(candidate.content)
-                self.memory.working.add_raw(
-                    types.Content(
-                        role="user",
-                        parts=[
-                            types.Part(
-                                function_response=types.FunctionResponse(
-                                    name=tool_name,
-                                    response={"result": result},
-                                )
-                            )
-                        ],
-                    )
-                )
-                # ---- OBSERVE ---- loop again
-                continue
+                yield "tool", {"name": naam, "args": args}
+                print(f"   🔧 [tool: {naam}({args})]")
 
-            # Final answer
-            final_text = response.text
-            self.memory.working.add_model(final_text)
-            self.memory.log_interaction("jarvis", final_text)
-            return final_text
+                if isinstance(args, dict):
+                    resultaat = self.tools.execute(naam, args)
+                else:
+                    resultaat = (f"Tool '{naam}' kreeg onleesbare argumenten: "
+                                 f"{call['arguments']!r}")
 
-        return (
-            f"Ik liep tegen mijn stappenlimiet aan, {config.OWNER_NAME}. "
-            "Zal ik doorgaan?"
-        )
+                yield "tool_result", {"name": naam, "result": str(resultaat)}
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": call["id"] or f"call_{i}",
+                    "content": str(resultaat),
+                })
+
+        yield "token", (f" Ik liep tegen mijn stappenlimiet aan, "
+                        f"{config.OWNER_NAME}. Zal ik doorgaan?")
+
+    # -- gemakshalve -------------------------------------------------------
+    def run(self, user_input: str, history: list[dict] | None = None) -> str:
+        """Hele antwoord in één keer; handig voor tests en scripts."""
+        stukken = []
+        for kind, value in self.stream(user_input, history):
+            if kind == "token":
+                stukken.append(value)
+            elif kind == "error":
+                return str(value)
+        antwoord = "".join(stukken).strip()
+
+        if self.memory is not None:
+            self.memory.log_interaction("user", user_input)
+            if antwoord:
+                self.memory.log_interaction("jarvis", antwoord)
+        return antwoord
+
+
+def _parse_args(raw: str):
+    """Argumenten komen als JSON-tekst binnen; lege tekst betekent geen args."""
+    raw = (raw or "").strip()
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        return raw                   # de aanroeper maakt er een nette fout van
+    return parsed if isinstance(parsed, dict) else raw

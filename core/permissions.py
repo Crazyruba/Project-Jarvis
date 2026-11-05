@@ -1,20 +1,43 @@
+"""
+Toestemming vragen voor gevoelige acties.
+
+De manier van vragen is inwisselbaar: in de terminal via input(), en in de HUD
+via een knop in beeld. De rest van de code merkt daar niets van.
+"""
+
+from __future__ import annotations
+
+from typing import Callable
+
+import config
+
+JA = {"ja", "jawel", "doe maar", "ok", "oke", "oké", "prima", "yes", "y", "j"}
+
+
+def terminal_confirm(tool_name: str, args: dict) -> bool:
+    """Standaard: vragen in de terminal."""
+    details = ", ".join(f"{k}={v}" for k, v in args.items())
+    antwoord = input(
+        f"\n⚠️  JARVIS wil '{tool_name}' uitvoeren ({details}). Toestaan? (ja/nee): "
+    ).strip().lower()
+    return antwoord in JA
+
+
 class PermissionManager:
-    """
-    Confirms sensitive actions (send/delete/post/create) before they run.
-    In Phase 3 it asks via text input. Later (voice phase) we just swap
-    the `ask` function for a spoken yes/no — the rest stays the same.
-    """
+    """Vraagt om goedkeuring voordat een gevoelige tool draait."""
 
-    def __init__(self, confirm_func=None):
-        # Default confirmation = terminal input
-        self.confirm_func = confirm_func or self._default_confirm
+    def __init__(self, confirm_func: Callable[[str, dict], bool] | None = None):
+        self.confirm_func = confirm_func or terminal_confirm
 
-    def _default_confirm(self, message: str) -> bool:
-        answer = input(f"\n⚠️  {message} (yes/no): ").strip().lower()
-        return answer in {"ja", "jawel", "doe maar", "ok", "oke", "oké", "yes", "y"}
+    def request(self, tool_name: str, args: dict | None = None) -> bool:
+        try:
+            return bool(self.confirm_func(tool_name, args or {}))
+        except Exception as e:
+            # Lukt het vragen niet, dan is het antwoord nee.
+            print(f"   ⚠️  Toestemming vragen mislukte ({e}) — actie geweigerd.")
+            return False
 
-    def request(self, tool_name: str, args: dict) -> bool:
-        """Vraag de eigenaar om een gevoelige actie goed te keuren."""
-        pretty_args = ", ".join(f"{k}={v}" for k, v in args.items())
-        message = f"JARVIS wil '{tool_name}' uitvoeren ({pretty_args}). Toestaan?"
-        return self.confirm_func(message)
+    def describe(self, tool_name: str, args: dict | None = None) -> str:
+        details = ", ".join(f"{k}={v}" for k, v in (args or {}).items())
+        return f"JARVIS wil '{tool_name}' uitvoeren ({details})." if details \
+            else f"JARVIS wil '{tool_name}' uitvoeren."

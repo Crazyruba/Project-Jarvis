@@ -13,18 +13,18 @@ def register_memory_tools(registry, memory_manager):
         description=(
             "Sla belangrijke, blijvende informatie over de eigenaar op "
             "(een feit, voorkeur, project of doel). Gebruik dit wanneer hij "
-            "shares something worth remembering long-term."
+            "iets deelt dat het onthouden waard is."
         ),
         parameters={
             "type": "object",
             "properties": {
                 "memory_type": {
                     "type": "string",
-                    "description": "One of: fact, preference, project, goal.",
+                    "description": "Een van: fact, preference, project, goal.",
                 },
                 "content": {
                     "type": "string",
-                    "description": "The information to remember, in a clear sentence.",
+                    "description": "Wat onthouden moet worden, in één duidelijke zin.",
                 },
             },
             "required": ["memory_type", "content"],

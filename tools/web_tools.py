@@ -5,7 +5,8 @@ import config
 def web_search(query: str):
     """Search the web using Google Custom Search API."""
     if not config.GOOGLE_SEARCH_API_KEY or not config.GOOGLE_SEARCH_ENGINE_ID:
-        return "Web search isn't configured. Add GOOGLE_SEARCH_API_KEY and GOOGLE_SEARCH_ENGINE_ID to .env."
+        return ("Zoeken op het web is niet ingesteld. Zet GOOGLE_SEARCH_API_KEY en "
+                "GOOGLE_SEARCH_ENGINE_ID in je .env.")
 
     url = "https://www.googleapis.com/customsearch/v1"
     params = {
@@ -19,7 +20,7 @@ def web_search(query: str):
         resp.raise_for_status()
         items = resp.json().get("items", [])
         if not items:
-            return f"No results found for '{query}'."
+            return f"Geen resultaten voor '{query}'."
 
         results = []
         for it in items:
@@ -29,18 +30,18 @@ def web_search(query: str):
             results.append(f"• {title}\n  {snippet}\n  {link}")
         return "\n\n".join(results)
     except Exception as e:
-        return f"Web search failed: {e}"
+        return f"Zoeken mislukte: {e}"
 
 
 def register_web_tools(registry):
     registry.register(
         name="web_search",
         func=web_search,
-        description="Search the web for current information using Google Search.",
+        description="Zoek actuele informatie op het web.",
         parameters={
             "type": "object",
             "properties": {
-                "query": {"type": "string", "description": "The search query."}
+                "query": {"type": "string", "description": "De zoekopdracht."}
             },
             "required": ["query"],
         },

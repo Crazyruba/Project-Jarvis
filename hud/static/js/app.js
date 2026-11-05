@@ -18,7 +18,12 @@ const els = {
   healthBtn: $("health-check"),
   healthList:$("health-list"),
   lite:      $("lite-toggle"),
+  hint:      document.querySelector(".hint"),
   toast:     $("toast"),
+  confirm:     $("confirm"),
+  confirmText: $("confirm-text"),
+  confirmAllow:$("confirm-allow"),
+  confirmDeny: $("confirm-deny"),
   title:     $("hud-title"),
   subtitleTop: $("hud-subtitle"),
 };
@@ -68,6 +73,7 @@ function stopFallbackLevel() {
 function say(role, text, { error = false } = {}) {
   els.transcript.classList.toggle("is-user", role === "user");
   els.transcript.classList.toggle("is-error", error);
+  els.transcript.classList.remove("is-tool");
   els.transcript.querySelector(".who").textContent =
     error ? "FOUT" : role === "user" ? (window.__owner || "JIJ") : "JARVIS";
   els.subtitle.textContent = text;
@@ -76,7 +82,7 @@ function say(role, text, { error = false } = {}) {
 function beginStream() {
   streaming = true;
   streamText = "";
-  els.transcript.classList.remove("is-user", "is-error");
+  els.transcript.classList.remove("is-user", "is-error", "is-tool");
   els.transcript.querySelector(".who").textContent = "JARVIS";
   els.subtitle.innerHTML = '<span class="caret"></span>';
 }
@@ -90,6 +96,39 @@ function pushToken(piece) {
 function endStream(final) {
   streaming = false;
   els.subtitle.textContent = final || streamText;
+}
+
+function showTool(name, args) {
+  const details = args && Object.keys(args).length
+    ? `(${Object.entries(args).map(([k, v]) => `${k}=${v}`).join(", ")})`
+    : "";
+  els.transcript.classList.remove("is-user", "is-error");
+  els.transcript.classList.add("is-tool");
+  els.transcript.querySelector(".who").textContent = "TOOL";
+  els.subtitle.textContent = `${name}${details}`;
+  streaming = false;
+}
+
+let pendingConfirm = null;
+
+function askConfirm(msg) {
+  pendingConfirm = msg.id;
+  els.confirmText.textContent = msg.text || `JARVIS wil '${msg.tool}' uitvoeren.`;
+  els.confirm.hidden = false;
+  els.confirmAllow.focus();
+}
+
+function hideConfirm() {
+  pendingConfirm = null;
+  els.confirm.hidden = true;
+  els.transcript.classList.remove("is-tool");
+}
+
+function answerConfirm(allow) {
+  if (!pendingConfirm) return;
+  send({ type: "confirm", id: pendingConfirm, allow });
+  pendingConfirm = null;
+  els.confirm.hidden = true;
 }
 
 function toast(text) {
@@ -144,7 +183,20 @@ function connect() {
         if (msg.ready) toast(`Spraak klaar (${msg.engine}) — zeg "Hey Jarvis"`);
         break;
       case "tool":
-        say("jarvis", `⚙ ${msg.name}`);
+        showTool(msg.name, msg.args);
+        break;
+      case "tool_result":
+        break;                       // het antwoord volgt vanzelf
+      case "confirm":
+        askConfirm(msg);
+        break;
+      case "confirm_done":
+        hideConfirm();
+        if (!msg.allowed) {
+          toast(msg.reason === "verlopen"
+            ? "Geen antwoord gegeven — actie geweigerd."
+            : "Actie geweigerd.");
+        }
         break;
       case "backend":
         toast(`Brein: ${msg.label}`);
@@ -194,7 +246,15 @@ document.addEventListener("keydown", (e) => {
   const typing = document.activeElement === els.input;
 
   if (e.key === "/" && !typing) { e.preventDefault(); els.input.focus(); return; }
-  if (e.key === "Escape") { send({ type: "cancel" }); els.input.blur(); return; }
+  if (e.key === "Escape") {
+    if (pendingConfirm) { answerConfirm(false); return; }
+    send({ type: "cancel" }); els.input.blur(); return;
+  }
+  // Bij een openstaande vraag beslissen j/n direct.
+  if (pendingConfirm && !typing) {
+    if (e.key === "j" || e.key === "y") { answerConfirm(true); return; }
+    if (e.key === "n") { answerConfirm(false); return; }
+  }
 
   if (e.code === "Space" && !typing && !ptt && !e.repeat) {
     e.preventDefault();
@@ -212,6 +272,9 @@ document.addEventListener("keyup", (e) => {
 });
 
 /* -- instellingen -------------------------------------------------------- */
+
+els.confirmAllow.addEventListener("click", () => answerConfirm(true));
+els.confirmDeny.addEventListener("click", () => answerConfirm(false));
 
 els.gear.addEventListener("click", () => {
   const open = els.panel.hidden;
@@ -264,6 +327,10 @@ async function loadBackends() {
       opt.disabled = !b.configured;
       opt.selected = b.name === data.active;
       els.backend.appendChild(opt);
+    }
+    if (Array.isArray(data.tools) && data.tools.length) {
+      els.hint.insertAdjacentHTML("beforebegin",
+        `<p class="tools-line">${data.tools.length} tools actief</p>`);
     }
     if (!data.backends.some((b) => b.configured)) {
       toast("Geen API-sleutel ingesteld — zet NOUS_API_KEY of NVIDIA_API_KEY in .env");

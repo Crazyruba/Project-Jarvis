@@ -115,6 +115,58 @@ class OpenAICompatLLM:
         except Exception as e:
             raise BackendError(f"{self.label}: {_kort(e)}") from e
 
+    def stream_with_tools(self, messages: list[dict], tools: list[dict] | None = None):
+        """
+        Zoals stream(), maar met tools erbij.
+
+        Levert ("token", tekst) zolang het model gewoon praat, en aan het eind
+        eenmalig ("tool_calls", [...]) als het tools wil aanroepen. De argumenten
+        komen in stukjes binnen, dus die worden hier per index samengevoegd.
+        """
+        if not tools:
+            for piece in self.stream(messages):
+                yield "token", piece
+            return
+
+        client = self._ensure_client()
+        partial: dict[int, dict] = {}
+
+        try:
+            response = client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                tools=tools,
+                temperature=config.LLM_TEMPERATURE,
+                max_tokens=config.LLM_MAX_TOKENS,
+                stream=True,
+            )
+            for chunk in response:
+                if not chunk.choices:
+                    continue
+                delta = chunk.choices[0].delta
+
+                if getattr(delta, "content", None):
+                    yield "token", delta.content
+
+                for call in (getattr(delta, "tool_calls", None) or []):
+                    slot = partial.setdefault(
+                        call.index, {"id": "", "name": "", "arguments": ""})
+                    if call.id:
+                        slot["id"] = call.id
+                    fn = getattr(call, "function", None)
+                    if fn is not None:
+                        if getattr(fn, "name", None):
+                            slot["name"] = fn.name
+                        if getattr(fn, "arguments", None):
+                            slot["arguments"] += fn.arguments
+        except BackendError:
+            raise
+        except Exception as e:
+            raise BackendError(f"{self.label}: {_kort(e)}") from e
+
+        if partial:
+            yield "tool_calls", [partial[i] for i in sorted(partial)]
+
     def complete(self, messages: list[dict]) -> str:
         """Alles in één keer — handig voor tests en de router."""
         return "".join(self.stream(messages))

@@ -158,6 +158,10 @@ select:focus, #input:focus { border-color: var(--cyan); }
 .health li .bad { color: #ff8a7a; }
 .health li .reason { opacity: 0.8; }
 
+.tools-line {
+  margin: 0 0 8px; color: var(--text-dim); font-size: 11px;
+}
+
 .hint {
   margin: 12px 0 0; padding-top: 10px;
   border-top: 1px solid rgba(102,232,255,0.14);
@@ -224,6 +228,36 @@ kbd {
   color: var(--cyan); border-color: var(--cyan);
   box-shadow: 0 0 14px var(--cyan-faint);
 }
+
+.confirm {
+  width: min(520px, 100%);
+  padding: 12px 14px;
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  background: rgba(40, 28, 4, 0.82);
+  border: 1px solid rgba(255, 180, 112, 0.5);
+  backdrop-filter: blur(4px);
+  box-shadow: 0 0 24px rgba(255, 180, 112, 0.14);
+}
+.confirm[hidden] { display: none; }
+.confirm-text {
+  flex: 1 1 260px; margin: 0;
+  color: var(--amber); font-size: 12px; line-height: 1.5;
+}
+.confirm-actions { display: flex; gap: 8px; }
+.confirm button {
+  padding: 6px 14px;
+  background: transparent;
+  border: 1px solid currentColor;
+  font-family: var(--font); font-size: 12px;
+  cursor: pointer;
+}
+.confirm .allow { color: #6ee7a8; }
+.confirm .deny  { color: #ff9c8c; }
+.confirm button:hover { background: rgba(255, 255, 255, 0.07); }
+
+/* tool die draait */
+.transcript.is-tool .who  { color: var(--amber); }
+.transcript.is-tool .said { color: var(--amber); opacity: 0.9; }
 
 .toast {
   margin: 0; padding: 5px 12px;

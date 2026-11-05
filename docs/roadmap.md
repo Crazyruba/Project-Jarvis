@@ -39,15 +39,21 @@ Piper antwoordt in het Nederlands, hologram beweegt mee. Vreemde stem wordt gewe
 > logica eromheen (motorkeuze, terugval, niveaus, gespreksverloop, toestanden)
 > is wel getest met nagebootste onderdelen.
 
-## Fase 3 — Tools op het nieuwe brein
+## Fase 3 — Tools op het nieuwe brein ✅
 
-- [ ] `tools/base.py` van Gemini `FunctionDeclaration` → OpenAI JSON-schema
-- [ ] `core/agent.py` van `function_call` → `tool_calls`
-- [ ] Gemini-pad (`core/llm.py`) eruit
-- [ ] Tool-aanroepen als `tool`-event in beeld
-- [ ] `core/permissions.py`: bevestigen in de HUD in plaats van `input()`
+- [x] `tools/base.py` van Gemini `FunctionDeclaration` → OpenAI JSON-schema
+- [x] `core/agent.py` van `function_call` → `tool_calls`, met streaming
+- [x] Gemini-pad (`core/llm.py`) en `google-genai` eruit
+- [x] Tool-aanroepen als `tool`-event in beeld
+- [x] `core/permissions.py`: bevestigen met een knop in de HUD
+- [x] `core/assembly.py`: één plek waar het brein in elkaar gezet wordt
+- [x] `main.py` is nu een terminal-REPL op dezelfde agent
+- [x] Tool-antwoorden naar het Nederlands (ze worden voorgelezen)
+- [x] `pyautogui` wordt lui geladen, zodat een machine zonder scherm werkt
 
-**Verificatie:** *"maak een bestand test.txt"* vraagt om bevestiging en doet het.
+**Verificatie (gedraaid):** in de browser tegen een mock-backend die tool-calls
+stuurt — `write_file` vraagt toestemming, weigeren maakt géén bestand aan,
+toestaan wél.
 
 ## Fase 4 — OpenClaw als handen
 

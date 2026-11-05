@@ -23,7 +23,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 import config
-from core.brain import Brain
+from core.assembly import build_brain
 from core.providers import BackendError, OpenAICompatLLM, list_backends
 from hud.events import HudState, bus
 
@@ -40,8 +40,21 @@ app = FastAPI(title="JARVIS Holo-Interface", docs_url=None, redoc_url=None,
               lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
-brain = Brain()
-history: list[dict] = []
+def _confirm_in_hud(tool_name: str, args: dict) -> bool:
+    """Toestemming vragen via een knop in de HUD in plaats van de terminal."""
+    loop = bus._loop
+    if loop is None or loop.is_closed():
+        return False
+    future = asyncio.run_coroutine_threadsafe(_ask_confirm(tool_name, args), loop)
+    try:
+        return future.result(timeout=config.CONFIRM_TIMEOUT + 10)
+    except Exception:
+        return False
+
+
+brain, memory, registry = build_brain(confirm_func=_confirm_in_hud)
+history = memory.working          # het gesprek van deze sessie
+_pending_confirms: dict[str, asyncio.Future] = {}
 _current_task: asyncio.Task | None = None
 
 # De spraaklus draait in een eigen thread en wordt door run_hud.py gezet.
@@ -74,6 +87,7 @@ async def backends():
         "primary": config.PRIMARY_BACKEND,
         "fallback": config.FALLBACK_BACKEND,
         "owner": config.OWNER_NAME,
+        "tools": sorted(registry.names()) if registry else [],
         "voice": {
             "enabled": voice is not None,
             "ready": bool(voice and voice.ready),
@@ -131,6 +145,7 @@ async def websocket(ws: WebSocket):
         await ws.send_json({
             "type": "hello",
             "owner": config.OWNER_NAME,
+        "tools": sorted(registry.names()) if registry else [],
         "voice": {
             "enabled": voice is not None,
             "ready": bool(voice and voice.ready),
@@ -188,6 +203,14 @@ async def _handle(data: dict):
             brain.use(name, data.get("model") or None)
             await bus.publish("backend", {"name": name, "label": brain.label})
 
+    elif kind == "confirm":
+        future = _pending_confirms.get(data.get("id"))
+        if future is not None and not future.done():
+            toegestaan = bool(data.get("allow"))
+            future.set_result(toegestaan)
+            await bus.publish("confirm_done", {"id": data.get("id"),
+                                               "allowed": toegestaan})
+
     elif kind == "ptt_start":
         if voice is None:
             await bus.publish("error", {
@@ -205,6 +228,34 @@ async def _handle(data: dict):
         pass
 
 
+async def _ask_confirm(tool_name: str, args: dict) -> bool:
+    """Stuur de vraag naar de HUD en wacht op de knop."""
+    import uuid
+
+    confirm_id = uuid.uuid4().hex[:8]
+    loop = asyncio.get_running_loop()
+    future: asyncio.Future = loop.create_future()
+    _pending_confirms[confirm_id] = future
+
+    await bus.publish("confirm", {
+        "id": confirm_id,
+        "tool": tool_name,
+        "args": args,
+        "text": brain.tools.permissions.describe(tool_name, args)
+        if brain.tools else f"JARVIS wil '{tool_name}' uitvoeren.",
+        "timeout": config.CONFIRM_TIMEOUT,
+    })
+
+    try:
+        return await asyncio.wait_for(future, timeout=config.CONFIRM_TIMEOUT)
+    except asyncio.TimeoutError:
+        await bus.publish("confirm_done", {"id": confirm_id, "allowed": False,
+                                           "reason": "verlopen"})
+        return False
+    finally:
+        _pending_confirms.pop(confirm_id, None)
+
+
 async def generate_reply(text: str) -> str:
     """
     Laat het brein antwoorden en stream het woord voor woord naar de HUD.
@@ -217,8 +268,8 @@ async def generate_reply(text: str) -> str:
 
     def produce():
         try:
-            for piece in brain.stream(text, history[:-1]):
-                queue.put_nowait(("token", piece))
+            for kind, value in brain.stream_events(text, history[:-1]):
+                queue.put_nowait((kind, value))
         except BackendError as e:
             queue.put_nowait(("error", str(e)))
         except Exception as e:  # pragma: no cover - onverwacht
@@ -237,6 +288,13 @@ async def generate_reply(text: str) -> str:
             await bus.publish("error", {"text": value})
             await worker
             return ""
+        if kind == "tool":
+            # Laat in beeld zien wat hij doet; de toestand blijft DENKT.
+            await bus.publish("tool", {"name": value["name"], "args": value["args"]})
+            continue
+        if kind == "tool_result":
+            await bus.publish("tool_result", {"name": value["name"]})
+            continue
         if eerste:
             await bus.set_state(HudState.SPEAKING)
             await bus.publish("reply_start", {"backend": brain.last_backend_used})
