@@ -75,17 +75,32 @@ NVIDIA_API_KEY=nvapi-...
 # OPENCLAW_GATEWAY_TOKEN=...
 ```
 
-### 3. Starten
+### 3. Stem ophalen en inspreken (eenmalig)
 
 ```bash
-python run_hud.py --no-voice
+python -m voice.piper_setup     # Nederlandse stem ophalen
+python -m voice.enroll          # je eigen stem inspreken
 ```
 
-Open daarna **http://127.0.0.1:7332**. Typ een bericht; het tandwiel rechtsboven
-wisselt van brein en test de backends.
+### 4. Starten
 
-> De spraakpijplijn (wake word, Nederlandse herkenning, Piper-stem) komt in
-> fase 2 — zie [`docs/roadmap.md`](docs/roadmap.md).
+```bash
+python run_hud.py               # met spraak
+python run_hud.py --no-voice    # alleen typen
+python main.py                  # in de terminal, zonder browser
+```
+
+Open daarna **http://127.0.0.1:7332**. Zeg *"Hey Jarvis"*, houd **spatie**
+ingedrukt, of typ gewoon.
+
+### 5. Altijd aan (optioneel)
+
+```bash
+./deploy/install.sh --all
+```
+
+Zet JARVIS als gebruikersdienst op, samen met OpenClaw en Hermes als die er
+zijn. Logboek: `journalctl --user -u jarvis-hud -f`.
 
 ---
 
@@ -116,13 +131,45 @@ docs/               architectuur en roadmap
 ## 🗺️ Roadmap
 
 - ✅ **Fase 1** — holografische HUD + providerlaag (Nous / NVIDIA / OpenClaw)
-- ⏳ **Fase 2** — Nederlandse spraak: Whisper `nl` + Piper-stem
-- ⏳ **Fase 3** — tools op OpenAI tool-calling, Gemini-pad eruit
-- ⏳ **Fase 4** — OpenClaw als handen
-- ⏳ **Fase 5** — Hermes Agent als lerend geheugen
-- ⏳ **Fase 6** — systemd-units, altijd aan
+- ✅ **Fase 2** — Nederlandse spraak: Whisper `nl` + Piper-stem
+- ✅ **Fase 3** — tools op OpenAI tool-calling, Gemini-pad eruit
+- ✅ **Fase 4** — OpenClaw als handen
+- ✅ **Fase 5** — Hermes Agent als lerend geheugen
+- ✅ **Fase 6** — systemd-units, altijd aan
+
+Alles staat er; wat nog mist is draaien op de echte machine — zie
+*Nog te testen* onderaan.
 
 Details in [`docs/roadmap.md`](docs/roadmap.md).
+
+---
+
+## 🤝 OpenClaw en Hermes aansluiten
+
+Beide worden alleen aangeboden als ze bereikbaar zijn, zodat JARVIS nooit een
+tool kiest die gegarandeerd faalt.
+
+**OpenClaw** — zet in `~/.openclaw/openclaw.json`:
+
+```json5
+{ gateway: { http: { endpoints: { chatCompletions: { enabled: true } } } } }
+```
+
+en `OPENCLAW_GATEWAY_TOKEN` in je `.env`. JARVIS stuurt dan handelingen
+("zet het licht uit", "stuur dit via WhatsApp") naar `openclaw_task`.
+
+**Hermes** — installeren, dan je sleutels erin:
+
+```bash
+curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash
+echo 'NVIDIA_API_KEY=nvapi-...' >> ~/.hermes/.env   # provider: nvidia
+hermes model                                        # of Nous Portal via OAuth
+```
+
+Langere of lerende klussen gaan dan naar `hermes_task`.
+
+Beide vragen eerst om bevestiging in de HUD. Dat uitzetten kan met
+`DELEGATE_CONFIRM=0`.
 
 ---
 
@@ -136,8 +183,27 @@ Details in [`docs/roadmap.md`](docs/roadmap.md).
 | Ventilator draait hard | Zet **lite** aan in het tandwiel |
 | Wake word gaat niet af | Verlaag `WAKE_THRESHOLD` in `config.py` |
 | Herkent jouw stem niet | Verlaag `SPEAKER_THRESHOLD`; opnieuw inspreken in een stille kamer |
+| Stem klinkt robotachtig | Piper-stem ontbreekt; draai `python -m voice.piper_setup` |
+| Nederlands wordt slecht verstaan | `WHISPER_MODEL=medium` (trager, ~2,5 GB) |
+| Spraak start niet | Eerst `python -m voice.enroll` |
 
 > Opnieuw inspreken: verwijder `data/chroma_voiceprints/` en start opnieuw.
+
+---
+
+## 🧪 Nog te testen op echte hardware
+
+Deze is eerlijk: het volgende is **niet** end-to-end gedraaid, omdat de
+ontwikkelomgeving geen microfoon had en Hugging Face er geblokkeerd was.
+
+- Piper-synthese en Whisper-herkenning zelf (de logica eromheen wél)
+- Het wake word en de sprekerverificatie met echte audio
+- De systemd-units onder een draaiende systemd
+- OpenClaw en Hermes tegen de échte programma's — wel tegen nagebootste
+
+Wat wél end-to-end draaide: de HUD in een echte browser, tool-calling met
+bevestiging (weigeren maakt geen bestand, toestaan wel), de OpenClaw-brug tegen
+een nagebootste gateway, en Hermes tegen een echt uitvoerbaar bestand.
 
 ---
 

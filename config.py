@@ -74,6 +74,21 @@ MAX_STEPS = 5               # tool-rondes per vraag
 
 
 # ---------------------------------------------------------------------------
+# Uitbesteden: OpenClaw doet dingen op deze pc, Hermes leert en werkt lang door
+# ---------------------------------------------------------------------------
+# OpenClaw gebruikt de backend-instellingen hierboven. Zet in openclaw.json:
+#   gateway: { http: { endpoints: { chatCompletions: { enabled: true } } } }
+OPENCLAW_TIMEOUT = int(os.getenv("OPENCLAW_TIMEOUT", "300"))
+
+HERMES_BIN = os.getenv("HERMES_BIN", "hermes")
+HERMES_TIMEOUT = int(os.getenv("HERMES_TIMEOUT", "900"))
+HERMES_MODEL = os.getenv("HERMES_MODEL")       # leeg = wat Hermes zelf ingesteld heeft
+
+# Uitbesteden kan echte dingen doen, dus standaard eerst even vragen.
+DELEGATE_CONFIRM = os.getenv("DELEGATE_CONFIRM", "1") not in {"0", "false", "False"}
+
+
+# ---------------------------------------------------------------------------
 # Spraak naar tekst
 # ---------------------------------------------------------------------------
 WHISPER_MODEL = os.getenv("WHISPER_MODEL", "small")   # tiny|base|small|medium
@@ -125,10 +140,21 @@ Je antwoorden worden hardop voorgelezen, dus houd ze kort en spreektalig:
 geen opsommingstekens, geen markdown, geen lange inleidingen. Eén tot drie
 zinnen, tenzij er expliciet om meer gevraagd wordt.
 
-Gebruik de beschikbare tools om dingen voor elkaar te krijgen. Denk stap voor stap.
-Wanneer {owner} iets blijvends over zichzelf deelt (feiten, voorkeuren, projecten,
-doelen), sla dat op met de save_memory-tool. Vraagt hij wat je over hem weet,
-gebruik dan recall_memory of het geheugen hieronder.
+Denk stap voor stap en kies bewust wat je zelf doet en wat je uitbesteedt:
+
+- Vragen, uitleg en gesprek: zelf beantwoorden.
+- Iets opzoeken, lezen, schrijven of op deze pc bedienen: je eigen tools.
+- Een handeling op de computer die verder gaat dan je eigen tools, of een
+  bericht via WhatsApp of Telegram: gebruik openclaw_task, als die er is.
+- Een langere klus die uitgezocht moet worden, meerdere stappen kost, of die
+  onthouden moet blijven voor later: gebruik hermes_task, als die er is.
+  Dat duurt even, dus niet voor iets wat je zelf kunt beantwoorden.
+
+Besteed nooit iets uit wat je in één zin kunt beantwoorden.
+
+Wanneer {owner} iets blijvends over zichzelf deelt (feiten, voorkeuren,
+projecten, doelen), sla dat op met de save_memory-tool. Vraagt hij wat je over
+hem weet, gebruik dan recall_memory of het geheugen hieronder.
 
 --- GEHEUGEN ---
 {memory_context}

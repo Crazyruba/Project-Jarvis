@@ -55,26 +55,43 @@ Piper antwoordt in het Nederlands, hologram beweegt mee. Vreemde stem wordt gewe
 stuurt — `write_file` vraagt toestemming, weigeren maakt géén bestand aan,
 toestaan wél.
 
-## Fase 4 — OpenClaw als handen
+## Fase 4 — OpenClaw als handen ✅
 
-- [ ] `openclaw gateway` met `gateway.http.endpoints.chatCompletions.enabled: true`
-- [ ] Backend-entry `openclaw` aanzetten, router stuurt "doe iets"-vragen daarheen
+- [x] `tools/delegation.py`: `openclaw_task` praat met de Gateway via
+      `POST /v1/chat/completions`
+- [x] Wordt alleen aangeboden als `OPENCLAW_GATEWAY_TOKEN` gezet is
+- [x] Staat standaard achter een bevestiging (`DELEGATE_CONFIRM`)
+- [x] Systeemprompt stuurt "doe iets"-vragen hierheen
+- [ ] **Op de T580**: `openclaw gateway` draaien met
+      `gateway.http.endpoints.chatCompletions.enabled: true`
 
-**Verificatie:** *"stuur dit via WhatsApp"* komt aan.
+**Verificatie (gedraaid):** tegen een nagebootste gateway op `127.0.0.1:18789` —
+juiste Bearer-token, model `openclaw/default`, opdracht komt aan, antwoord terug.
 
-## Fase 5 — Hermes als lerend geheugen
+## Fase 5 — Hermes als lerend geheugen ✅
 
-- [ ] `hermes -z "<opdracht>"` als tool voor lange en lerende taken
-- [ ] `NVIDIA_API_KEY` in `~/.hermes/.env`, Nous Portal via `hermes model`
+- [x] `hermes_task` roept `hermes -z "<opdracht>"` aan als subprocess
+- [x] Wordt alleen aangeboden als het commando op het PATH staat
+- [x] Nette melding bij een time-out, foutcode of ontbrekende installatie
+- [x] Lange uitvoer wordt ingekort — het antwoord wordt voorgelezen
+- [ ] **Op de T580**: `NVIDIA_API_KEY` in `~/.hermes/.env`, Nous Portal via
+      `hermes model`
 - [ ] Later eventueel opwaarderen naar de headless `hermes serve`-API
 
-**Verificatie:** *"zoek dit uit en onthoud wat je leert"* levert een nieuwe skill op.
+**Verificatie (gedraaid):** met een echt uitvoerbaar bestand op het PATH —
+opdracht komt met `-z` aan, uitvoer komt terug, foutcode wordt netjes gemeld.
 
-## Fase 6 — Altijd aan
+## Fase 6 — Altijd aan ✅
 
-- [ ] `systemd --user`-units: `openclaw-gateway`, `hermes-gateway`, `jarvis-hud`
-- [ ] `loginctl enable-linger`
-- [ ] `.desktop`-starter die de HUD kiosk-gewijs opent
+- [x] `deploy/systemd/`: `jarvis-hud`, `openclaw-gateway`, `hermes-gateway`
+- [x] `deploy/install.sh` plaatst en start ze als **gebruikers**dienst
+- [x] Wijst op `loginctl enable-linger` als dat nog niet aanstaat
+- [x] `deploy/jarvis.desktop` opent de HUD
+- [ ] **Op de T580**: `./deploy/install.sh --all` draaien
+
+> De units zijn structureel nagelopen (secties, absolute ExecStart, Restart).
+> `systemd-analyze verify` kon hier niet draaien: de container heeft geen
+> systemd-manager.
 
 ## Open punten
 

@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=J.A.R.V.I.S
+Comment=Holografische interface
+Exec=xdg-open http://127.0.0.1:7332
+Icon=utilities-terminal
+Terminal=false
+Categories=Utility;

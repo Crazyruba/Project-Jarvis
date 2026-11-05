@@ -13,6 +13,7 @@ from core.permissions import PermissionManager
 from memory.manager import MemoryManager
 from tools.base import ToolRegistry
 from tools.basic_tools import register_basic_tools
+from tools.delegation import register_delegation_tools
 from tools.file_tools import register_file_tools
 from tools.memory_tools import register_memory_tools
 from tools.system_tools import register_system_tools
@@ -27,7 +28,12 @@ def build_registry(memory, confirm_func=None) -> ToolRegistry:
     register_file_tools(registry)
     register_web_tools(registry)
     register_system_tools(registry)
-    # Fase 4 en 5 hangen OpenClaw en Hermes hier als extra tools aan.
+
+    # OpenClaw en Hermes komen er alleen bij als ze bereikbaar zijn.
+    uitbesteed = register_delegation_tools(registry)
+    if uitbesteed:
+        print(f"🤝 Uitbesteden kan via: {', '.join(uitbesteed)}")
+
     return registry
 
 
