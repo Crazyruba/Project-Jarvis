@@ -1,8 +1,10 @@
 name: tests
 
 on:
+  # Alleen main bij een push: een branch met een open pull request zou anders
+  # twee keer dezelfde commit draaien.
   push:
-    branches: ["**"]
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
