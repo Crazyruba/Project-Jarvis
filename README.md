@@ -1,5 +1,7 @@
 # 🦾 JARVIS — Holografische persoonlijke assistent
 
+[![tests](https://github.com/Crazyruba/Project-Jarvis/actions/workflows/tests.yml/badge.svg)](https://github.com/Crazyruba/Project-Jarvis/actions/workflows/tests.yml)
+
 > Een handsfree spraakassistent met een holografische interface, die op je eigen
 > laptop draait: langetermijngeheugen, tools, en biometrische stemherkenning
 > zodat hij alleen naar zijn eigenaar luistert.
@@ -141,6 +143,22 @@ Alles staat er; wat nog mist is draaien op de echte machine — zie
 *Nog te testen* onderaan.
 
 Details in [`docs/roadmap.md`](docs/roadmap.md).
+
+---
+
+## 🧪 Tests draaien
+
+```bash
+pip install -r requirements-dev.txt
+pytest
+```
+
+Bewust een aparte lijst: de volledige `requirements.txt` trekt torch, chromadb
+en faster-whisper binnen — ruim een gigabyte die geen enkele test aanraakt. De
+zware modules worden pas in de spraaklus geladen.
+
+GitHub Actions draait dit bij elke push op Python 3.11 en 3.13, plus een
+syntaxcontrole op de HUD-scripts.
 
 ---
 

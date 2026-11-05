@@ -93,6 +93,15 @@ opdracht komt met `-z` aan, uitvoer komt terug, foutcode wordt netjes gemeld.
 > `systemd-analyze verify` kon hier niet draaien: de container heeft geen
 > systemd-manager.
 
+## Continue integratie ✅
+
+GitHub Actions draait bij elke push `pytest` op Python 3.11 en 3.13, met een
+timeout van 60 seconden per test, plus een syntaxcontrole op de HUD-scripts en
+een check dat elk bestand waar `index.html` naar wijst ook echt bestaat.
+
+De testafhankelijkheden staan apart in `requirements-dev.txt`, zodat CI niet
+torch en chromadb hoeft te installeren voor tests die ze nooit aanraken.
+
 ## Open punten
 
 - Of de `hermes serve`-API OpenAI-compatibel is, is niet bevestigd. Daarom fase 5
