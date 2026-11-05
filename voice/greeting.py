@@ -1,28 +1,45 @@
-import os
-from datetime import datetime
+"""Eén keer per dag een groet, passend bij het tijdstip."""
+
+from __future__ import annotations
+
+from datetime import date, datetime
+from pathlib import Path
+
 import config
 
 
-def maybe_greet(tts):
-    """Say 'Good morning, Karan' only once per day."""
-    today = datetime.now().strftime("%Y-%m-%d")
-    last = None
+def _dagdeel(uur: int) -> str:
+    if uur < 6:
+        return "Goedenacht"
+    if uur < 12:
+        return "Goedemorgen"
+    if uur < 18:
+        return "Goedemiddag"
+    return "Goedenavond"
 
-    if os.path.exists(config.GREETING_STATE_PATH):
-        with open(config.GREETING_STATE_PATH, "r") as f:
-            last = f.read().strip()
 
-    if last != today:
-        hour = datetime.now().hour
-        if hour < 12:
-            part = "Good morning"
-        elif hour < 17:
-            part = "Good afternoon"
-        else:
-            part = "Good evening"
+def al_gegroet(vandaag: date | None = None) -> bool:
+    bestand = Path(config.GREETING_STATE_PATH)
+    if not bestand.exists():
+        return False
+    try:
+        return bestand.read_text("utf-8").strip() == (vandaag or date.today()).isoformat()
+    except OSError:
+        return False
 
-        tts.speak(f"{part}, Karan! I'm online and ready to help.")
 
-        os.makedirs(os.path.dirname(config.GREETING_STATE_PATH), exist_ok=True)
-        with open(config.GREETING_STATE_PATH, "w") as f:
-            f.write(today)
+def groet_eenmaal_per_dag(zeg) -> bool:
+    """Groet als dat vandaag nog niet gebeurd is. Geeft terug of er gegroet is."""
+    if al_gegroet():
+        return False
+
+    nu = datetime.now()
+    zeg(f"{_dagdeel(nu.hour)}, {config.OWNER_NAME}. Ik ben online.")
+
+    bestand = Path(config.GREETING_STATE_PATH)
+    try:
+        bestand.parent.mkdir(parents=True, exist_ok=True)
+        bestand.write_text(date.today().isoformat(), "utf-8")
+    except OSError:
+        pass            # niet kunnen onthouden is geen reden om te stoppen
+    return True

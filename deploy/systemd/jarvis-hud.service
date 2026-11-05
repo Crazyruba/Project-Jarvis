@@ -1,0 +1,18 @@
+[Unit]
+Description=JARVIS Holo-Interface
+After=network-online.target sound.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/Project-Jarvis
+ExecStart=%h/Project-Jarvis/venv/bin/python %h/Project-Jarvis/run_hud.py
+Restart=on-failure
+RestartSec=5
+# Spraak heeft de geluidsserver van de sessie nodig.
+Environment=PULSE_SERVER=unix:%t/pulse/native
+# Lange modelbestanden laden mag even duren.
+TimeoutStartSec=180
+
+[Install]
+WantedBy=default.target

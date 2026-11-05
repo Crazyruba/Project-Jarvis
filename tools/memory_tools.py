@@ -1,38 +1,51 @@
-def register_memory_tools(registry, memory_manager):
-    """Register memory tools, wired to the shared MemoryManager."""
+"""
+Geheugentools.
 
-    def save_memory(memory_type: str, content: str):
-        return memory_manager.remember_fact(memory_type, content)
+Deze hebben de opslag nodig, dus ze worden per sessie gemaakt in plaats van
+als losse functies gedefinieerd zoals de rest.
+"""
 
-    def recall_memory():
-        return memory_manager.summary()
+from __future__ import annotations
 
-    registry.register(
-        name="save_memory",
-        func=save_memory,
-        description=(
-            "Save an important, durable piece of information about Karan "
-            "(a fact, preference, project, or goal). Use this whenever Karan "
-            "shares something worth remembering long-term."
-        ),
-        parameters={
-            "type": "object",
-            "properties": {
-                "memory_type": {
-                    "type": "string",
-                    "description": "One of: fact, preference, project, goal.",
-                },
-                "content": {
-                    "type": "string",
-                    "description": "The information to remember, in a clear sentence.",
-                },
-            },
-            "required": ["memory_type", "content"],
-        },
-    )
+from typing import Literal
 
-    registry.register(
-        name="recall_memory",
-        func=recall_memory,
-        description="Retrieve everything JARVIS remembers about Karan.",
-    )
+from tools.registry import tool
+
+
+def maak_geheugentools(memory):
+    """Geef de tools terug die op dit geheugen werken."""
+
+    @tool
+    def onthoud(soort: Literal["feit", "voorkeur", "project", "doel"],
+                inhoud: str) -> str:
+        """Onthoud iets blijvends over de eigenaar. Gebruik dit zodra hij iets
+        deelt dat later nog van pas komt.
+
+        soort: feit, voorkeur, project of doel.
+        inhoud: Wat onthouden moet worden, in één duidelijke zin.
+        """
+        return memory.onthoud(soort, inhoud)
+
+    @tool
+    def herinner_je(onderwerp: str = "") -> str:
+        """Haal op wat je over de eigenaar weet. Zonder onderwerp krijg je alles.
+
+        onderwerp: Waarover je iets wil weten; leeg laten geeft het hele overzicht.
+        """
+        if not onderwerp.strip():
+            return memory.samenvatting()
+
+        treffers = memory.zoek(onderwerp, limiet=8)
+        if not treffers:
+            return f"Ik weet niets over '{onderwerp}'."
+        return "\n".join(f"- {f.inhoud}" for f in treffers)
+
+    @tool(sensitive=True)
+    def vergeet(onderwerp: str) -> str:
+        """Verwijder wat je over een onderwerp hebt onthouden.
+
+        onderwerp: Waarover de herinneringen weg mogen.
+        """
+        return memory.vergeet(onderwerp)
+
+    return [onthoud, herinner_je, vergeet]
