@@ -6,7 +6,7 @@ import pytest
 
 import config
 from tools import delegation
-from tools.base import ToolRegistry
+from tools.registry import ToolRegistry, tool
 
 
 # --- beschikbaarheid --------------------------------------------------------

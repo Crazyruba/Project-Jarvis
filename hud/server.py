@@ -26,6 +26,7 @@ import config
 from core.assembly import build_brain
 from core.providers import BackendError, OpenAICompatLLM, list_backends
 from hud.events import HudState, bus
+from memory.working_memory import WorkingMemory
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -53,7 +54,10 @@ def _confirm_in_hud(tool_name: str, args: dict) -> bool:
 
 
 brain, memory, registry = build_brain(confirm_func=_confirm_in_hud)
-history = memory.working          # het gesprek van deze sessie
+
+# Het blijvende geheugen zit in `memory`; dit is het gesprek van deze sessie,
+# dat als context meegaat naar het model.
+history = WorkingMemory()
 _pending_confirms: dict[str, asyncio.Future] = {}
 _current_task: asyncio.Task | None = None
 

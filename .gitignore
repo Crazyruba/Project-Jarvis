@@ -24,10 +24,12 @@ Thumbs.db
 
 # SQLite Databases
 *.db
+*.db-wal
+*.db-shm
 *.sqlite3
+data/memory.db*
 
 # ChromaDB / Vector DB
-data/chroma_voiceprints/
 data/ecapa_model/
 
 
@@ -48,8 +50,9 @@ models/
 data/screenshots/
 
 # Voice Recognition
-data/voiceprint.npy
-data/last_greeting.txt
+data/voiceprint.npz
+data/voiceprint.json
+data/laatste_groet.txt
 data/piper/
 
 
@@ -82,6 +85,10 @@ htmlcov/
 
 # Cache
 .cache/
+
+# Alles in data/ wordt tijdens het draaien aangemaakt.
+data/*
+!data/README.md
 
 # Secrets
 auth/token.json

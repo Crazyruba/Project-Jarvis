@@ -51,8 +51,10 @@ class VoiceLoop:
 
         self.stt = None
         self.tts = None
+        self.mic = None
         self.wake = None
-        self.verifier = None
+        self.store = None
+        self.encoder = None
         self.error: str | None = None
 
     # -- besturing ---------------------------------------------------------
@@ -89,18 +91,19 @@ class VoiceLoop:
 
     # -- opstarten ---------------------------------------------------------
     def _load(self) -> bool:
+        from voice.encoder import get_encoder
+        from voice.listener import Microfoon, WakeWord
         from voice.stt import SpeechToText
         from voice.tts import TextToSpeech
-        from voice.wake_word import WakeWordListener
-        from voice.voiceprint_store import VoiceprintStore
-        from voice.speaker_id import SpeakerVerifier
+        from voice.voiceprint import VoiceprintStore
 
         try:
             self.tts = TextToSpeech()
             self.stt = SpeechToText()
+            self.mic = Microfoon()
 
             store = VoiceprintStore()
-            if not store.is_enrolled():
+            if not store.is_ingesproken():
                 self.error = (
                     "Je stem is nog niet ingesproken. Draai eenmalig "
                     "`python -m voice.enroll` en start daarna opnieuw."
@@ -109,8 +112,9 @@ class VoiceLoop:
                 print(f"⚠️  {self.error}")
                 return False
 
-            self.verifier = SpeakerVerifier(store)
-            self.wake = WakeWordListener()
+            self.store = store
+            self.encoder = get_encoder()
+            self.wake = WakeWord()
         except Exception as e:
             self.error = f"Spraak kon niet starten: {e}"
             self.bus.publish_from_thread("error", {"text": self.error})
@@ -133,7 +137,7 @@ class VoiceLoop:
             # Wachten op "Hey Jarvis", of op push-to-talk uit de HUD.
             via_ptt = self._ptt.is_set()
             if not via_ptt:
-                gehoord = self.wake.wait_for_wake(
+                gehoord = self.wake.wacht(
                     should_stop=lambda: self._ptt.is_set() or self._stop.is_set()
                 )
                 if self._stop.is_set():
@@ -164,25 +168,28 @@ class VoiceLoop:
                 time.sleep(0.4)          # laat de luidspreker uitklinken
 
             self._state(HudState.LISTENING)
-            audio = self.stt.record(config.FOLLOWUP_LISTEN, on_level=self._level)
+            opname = self.mic.neem_op(on_level=self._level)
             self._level(0.0)
 
-            is_eigenaar, score = self.verifier.verify(audio)
-            print(f"   🔐 Sprekercontrole: {'ok' if is_eigenaar else 'afgewezen'} "
-                  f"({score:.2f})")
-            if not is_eigenaar:
+            if not opname.had_spraak:
+                print("   🤫 (niets gehoord — terug naar slapen)")
+                return
+
+            oordeel = self.store.vergelijk(self.encoder.embed(opname.audio))
+            print(f"   🔐 Sprekercontrole: {oordeel}")
+            if not oordeel.is_eigenaar:
                 if eerste:
                     self._say(f"Sorry, ik neem alleen opdrachten aan van "
                               f"{config.OWNER_NAME}.")
                 return
 
             if eerste:
-                from voice.greeting import maybe_greet
-                maybe_greet(self.tts)
+                from voice.greeting import groet_eenmaal_per_dag
+                groet_eenmaal_per_dag(self._say)
             eerste = False
 
             self._state(HudState.THINKING)
-            tekst = self.stt.transcribe(audio)
+            tekst = self.stt.transcribe(opname.audio)
 
             if is_silence(tekst):
                 print("   🤫 (stilte — terug naar slapen)")

@@ -20,6 +20,7 @@ import shutil
 import subprocess
 
 import config
+from tools.registry import tool
 
 
 # ---------------------------------------------------------------------------
@@ -95,58 +96,41 @@ def _kort(tekst: str, limiet: int = 500) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Registratie
+# De tools zelf
 # ---------------------------------------------------------------------------
+@tool(name="openclaw_task", sensitive=True)
+def _openclaw_tool(opdracht: str) -> str:
+    """Laat OpenClaw iets doen op deze computer: bestanden beheren, programma's
+    bedienen, agenda-afspraken, of een bericht sturen via WhatsApp of Telegram.
+    Gebruik dit voor handelingen, niet voor vragen.
+
+    opdracht: Wat er moet gebeuren, in gewone taal.
+    """
+    return openclaw_task(opdracht)
+
+
+@tool(name="hermes_task", sensitive=True)
+def _hermes_tool(opdracht: str) -> str:
+    """Zet Hermes Agent op een langere klus die meerdere stappen kost,
+    uitgezocht moet worden, of die hij moet onthouden voor later. Hermes heeft
+    zijn eigen geheugen en skills. Dit duurt even, dus gebruik het niet voor
+    iets wat je zelf kunt beantwoorden.
+
+    opdracht: De klus, met genoeg context om zelfstandig te werken.
+    """
+    return hermes_task(opdracht)
+
+
 def register_delegation_tools(registry) -> list[str]:
     """Bied alleen aan wat bereikbaar is. Geeft terug wat er geregistreerd is."""
     geregistreerd = []
 
     if openclaw_available():
-        registry.register(
-            name="openclaw_task",
-            func=openclaw_task,
-            description=(
-                "Laat OpenClaw iets doen op deze computer: bestanden beheren, "
-                "programma's bedienen, agenda-afspraken, of een bericht sturen via "
-                "WhatsApp of Telegram. Gebruik dit voor handelingen, niet voor vragen. "
-                "Beschrijf de opdracht in één duidelijke zin."
-            ),
-            parameters={
-                "type": "object",
-                "properties": {
-                    "opdracht": {
-                        "type": "string",
-                        "description": "Wat er moet gebeuren, in gewone taal.",
-                    }
-                },
-                "required": ["opdracht"],
-            },
-            sensitive=config.DELEGATE_CONFIRM,
-        )
+        registry.add(_openclaw_tool, sensitive=config.DELEGATE_CONFIRM)
         geregistreerd.append("openclaw_task")
 
     if hermes_available():
-        registry.register(
-            name="hermes_task",
-            func=hermes_task,
-            description=(
-                "Zet Hermes Agent op een langere klus die meerdere stappen kost, "
-                "uitgezocht moet worden, of die hij moet onthouden voor later. "
-                "Hermes heeft zijn eigen geheugen en skills. Dit duurt even, dus "
-                "gebruik het niet voor iets wat je zelf kunt beantwoorden."
-            ),
-            parameters={
-                "type": "object",
-                "properties": {
-                    "opdracht": {
-                        "type": "string",
-                        "description": "De klus, met genoeg context om zelfstandig te werken.",
-                    }
-                },
-                "required": ["opdracht"],
-            },
-            sensitive=config.DELEGATE_CONFIRM,
-        )
+        registry.add(_hermes_tool, sensitive=config.DELEGATE_CONFIRM)
         geregistreerd.append("hermes_task")
 
     return geregistreerd

@@ -77,21 +77,53 @@ in `~/.hermes/.env`) en Nous Portal via OAuth (`hermes model`).
 ## Mappenindeling
 
 ```
-run_hud.py              entrypoint: HUD + optioneel de voice-loop
+run_hud.py              entrypoint: HUD + optioneel de spraaklus
+main.py                 dezelfde agent, in de terminal
 hud/
   events.py             EventBus + HudState (IDLE/LISTENING/THINKING/SPEAKING)
   server.py             FastAPI + WebSocket + REST
-  static/               index.html, css/, js/ (app.js, holo.js), vendor/, assets/
+  static/               index.html, css/, js/ (app.js, holo.js), vendor/
 core/
   providers.py          OpenAICompatLLM — één client, meerdere base_urls
-  brain.py              router: chat · openclaw · hermes
-  agent.py              bestaande ReAct-loop (fase 3: naar OpenAI tool-calling)
-  llm.py                Gemini-wrapper (vervalt in fase 3)
+  brain.py              router met terugval op een reservebackend
+  agent.py              ReAct-lus op OpenAI tool-calling
   permissions.py        bevestiging voor gevoelige acties
-memory/                 werk- · kort- · langetermijngeheugen (SQLite)
-tools/                  toolregistry + tools
-voice/                  wake word, STT, TTS, ECAPA-sprekerverificatie
+  assembly.py           zet geheugen, tools en router in elkaar
+memory/
+  store.py              blijvend geheugen: SQLite + FTS5
+  working_memory.py     het gesprek van deze sessie, in RAM
+tools/
+  registry.py           schema's afgeleid uit de functie zelf
+  builtin.py            tijd, bestanden, systeem, web
+  memory_tools.py       onthouden, herinneren, vergeten
+  delegation.py         OpenClaw en Hermes
+voice/
+  listener.py           wake word + opnemen met stiltedetectie
+  voiceprint.py         stemafdrukken (numpy, cosinus)
+  encoder.py            ECAPA-TDNN-wrapper
+  stt.py tts.py loop.py enroll.py greeting.py piper_setup.py
+deploy/                 systemd-units en installatiescript
 ```
+
+## Drie keuzes die afwijken van het voor de hand liggende
+
+**Toolschema's komen uit de functie.** Een handgeschreven JSON-schema naast
+elke tool loopt vroeg of laat uit de pas met de code eronder. `@tool` leidt
+naam, beschrijving, types en verplichte velden af uit de signatuur en de
+docstring, en weigert een tool zonder type-annotatie of beschrijving.
+
+**Het geheugen zoekt op relevantie.** Alles wat ooit onthouden is in elke
+prompt stoppen werkt tot een stuk of twintig feiten en daarna niet meer.
+`context_for()` doet een FTS5-zoekopdracht op de huidige vraag en vult aan met
+de feiten die het vaakst van pas kwamen.
+
+**Stemafdrukken in numpy, niet in een vectordatabase.** Het gaat om een stuk of
+vijf vectoren van 192 getallen; cosinusgelijkenis daarover is een paar regels.
+Dat scheelt een forse afhankelijkheid.
+
+**Opnemen stopt op stilte, niet op de klok.** De duur wordt geteld in
+opgenomen samples in plaats van met de wandklok: de geluidskaart bepaalt het
+tempo, en levert die blokken in een burst dan loopt een klokmeting uit de pas.
 
 ## HUD-protocol (WebSocket `/ws`)
 

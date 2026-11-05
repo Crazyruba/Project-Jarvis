@@ -122,24 +122,45 @@ class NepTTS:
 
 class NepSTT:
     def __init__(self, teksten): self.teksten = list(teksten)
-    def record(self, seconds=None, on_level=None):
-        if on_level: on_level(0.3); on_level(0.0)
-        return object()
     def transcribe(self, audio):
         return self.teksten.pop(0) if self.teksten else ""
 
 
-class NepVerifier:
+class NepMicrofoon:
+    """Geeft net zoveel opnames terug als er teksten zijn, daarna stilte."""
+
+    def __init__(self, aantal, had_spraak=True):
+        self.over = aantal
+        self.had_spraak = had_spraak
+
+    def neem_op(self, on_level=None, **kwargs):
+        from voice.listener import Opname
+        if on_level: on_level(0.3); on_level(0.0)
+        spraak = self.had_spraak and self.over > 0
+        self.over -= 1
+        return Opname(audio=object(), seconden=1.5, had_spraak=spraak)
+
+
+class NepStore:
     def __init__(self, ok=True): self.ok = ok
-    def verify(self, audio): return self.ok, 0.91 if self.ok else 0.12
+    def vergelijk(self, afdruk):
+        from voice.voiceprint import Oordeel
+        return Oordeel(self.ok, 0.91 if self.ok else 0.12, 3)
 
 
-def _lus(bus, teksten, respond=lambda t: "antwoord", eigenaar=True):
+class NepEncoder:
+    def embed(self, audio): return object()
+
+
+def _lus(bus, teksten, respond=lambda t: "antwoord", eigenaar=True,
+         had_spraak=True):
     from voice.loop import VoiceLoop
     lus = VoiceLoop(bus=bus, respond=respond)
     lus.stt = NepSTT(teksten)
     lus.tts = NepTTS()
-    lus.verifier = NepVerifier(eigenaar)
+    lus.mic = NepMicrofoon(len(teksten) or 1, had_spraak)
+    lus.store = NepStore(eigenaar)
+    lus.encoder = NepEncoder()
     return lus
 
 
@@ -155,7 +176,7 @@ def _events(bus):
 
 def test_gesprek_doorloopt_de_toestanden(monkeypatch):
     monkeypatch.setattr(config, "FOLLOWUP_ENABLED", False)
-    monkeypatch.setattr("voice.greeting.maybe_greet", lambda tts: None)
+    monkeypatch.setattr("voice.greeting.groet_eenmaal_per_dag", lambda zeg: False)
 
     bus = EventBus()
     events = _events(bus)
@@ -171,7 +192,7 @@ def test_gesprek_doorloopt_de_toestanden(monkeypatch):
 
 
 def test_vreemde_stem_wordt_geweigerd(monkeypatch):
-    monkeypatch.setattr("voice.greeting.maybe_greet", lambda tts: None)
+    monkeypatch.setattr("voice.greeting.groet_eenmaal_per_dag", lambda zeg: False)
 
     bus = EventBus()
     _events(bus)
@@ -183,7 +204,7 @@ def test_vreemde_stem_wordt_geweigerd(monkeypatch):
 
 
 def test_stilte_beeindigt_het_gesprek(monkeypatch):
-    monkeypatch.setattr("voice.greeting.maybe_greet", lambda tts: None)
+    monkeypatch.setattr("voice.greeting.groet_eenmaal_per_dag", lambda zeg: False)
 
     bus = EventBus()
     _events(bus)
@@ -192,8 +213,20 @@ def test_stilte_beeindigt_het_gesprek(monkeypatch):
     assert lus.tts.gezegd == []
 
 
+def test_niets_gehoord_beeindigt_het_gesprek_meteen(monkeypatch):
+    """Zonder spraak hoeft er niet getranscribeerd of geverifieerd te worden."""
+    monkeypatch.setattr("voice.greeting.groet_eenmaal_per_dag", lambda zeg: False)
+
+    bus = EventBus()
+    _events(bus)
+    lus = _lus(bus, ["iets"], respond=lambda t: pytest.fail("mag niet aangeroepen"),
+               had_spraak=False)
+    lus._conversation()
+    assert lus.tts.gezegd == []
+
+
 def test_afsluitcommando_stopt_de_lus(monkeypatch):
-    monkeypatch.setattr("voice.greeting.maybe_greet", lambda tts: None)
+    monkeypatch.setattr("voice.greeting.groet_eenmaal_per_dag", lambda zeg: False)
 
     bus = EventBus()
     _events(bus)
@@ -206,7 +239,7 @@ def test_afsluitcommando_stopt_de_lus(monkeypatch):
 
 def test_vervolgvraag_zonder_wake_word(monkeypatch):
     monkeypatch.setattr(config, "FOLLOWUP_ENABLED", True)
-    monkeypatch.setattr("voice.greeting.maybe_greet", lambda tts: None)
+    monkeypatch.setattr("voice.greeting.groet_eenmaal_per_dag", lambda zeg: False)
     monkeypatch.setattr("time.sleep", lambda s: None)
 
     bus = EventBus()

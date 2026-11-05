@@ -4,7 +4,7 @@ import pytest
 
 import config
 from core.agent import Agent, _parse_args
-from tools.base import ToolRegistry
+from tools.registry import ToolRegistry, tool
 
 
 class NepLLM:
@@ -29,9 +29,23 @@ def _call(naam, args='{}', id="c1"):
 
 @pytest.fixture
 def registry():
+    @tool(name="get_time")
+    def get_time() -> str:
+        """Geef de tijd."""
+        return "Het is drie uur."
+
+    @tool(name="tel_op")
+    def tel_op(a: int, b: int) -> str:
+        """Tel twee getallen op.
+
+        a: Eerste getal.
+        b: Tweede getal.
+        """
+        return str(a + b)
+
     reg = ToolRegistry()
-    reg.register("get_time", lambda: "Het is drie uur.", "Tijd.")
-    reg.register("tel_op", lambda a, b: str(a + b), "Tel op.")
+    reg.add(get_time)
+    reg.add(tel_op)
     return reg
 
 

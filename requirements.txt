@@ -16,10 +16,7 @@ piper-tts>=1.2.0
 pyttsx3>=2.90          # terugval als Piper-stem ontbreekt
 openwakeword>=0.6.0
 onnxruntime
-librosa>=0.10.0
-speechbrain
-resemblyzer>=0.1.1
-chromadb>=0.4.22
+speechbrain            # ECAPA-TDNN voor sprekerherkenning
 
 # --- Tools ---
 pyautogui>=0.9.54

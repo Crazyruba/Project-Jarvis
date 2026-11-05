@@ -1,7 +1,7 @@
 """
 Eén plek waar het brein in elkaar wordt gezet.
 
-Zowel de HUD als de terminal gebruiken dit, zodat ze gegarandeerd dezelfde
+De HUD en de terminal gebruiken dit allebei, zodat ze gegarandeerd dezelfde
 tools, hetzelfde geheugen en dezelfde instellingen hebben.
 """
 
@@ -10,24 +10,20 @@ from __future__ import annotations
 import config
 from core.brain import Brain
 from core.permissions import PermissionManager
-from memory.manager import MemoryManager
-from tools.base import ToolRegistry
-from tools.basic_tools import register_basic_tools
+from memory.store import Memory
+from tools import builtin
 from tools.delegation import register_delegation_tools
-from tools.file_tools import register_file_tools
-from tools.memory_tools import register_memory_tools
-from tools.system_tools import register_system_tools
-from tools.web_tools import register_web_tools
+from tools.memory_tools import maak_geheugentools
+from tools.registry import ToolRegistry
 
 
 def build_registry(memory, confirm_func=None) -> ToolRegistry:
     """Alle tools, met een permissielaag voor de gevoelige."""
     registry = ToolRegistry(permission_manager=PermissionManager(confirm_func))
-    register_basic_tools(registry)
-    register_memory_tools(registry, memory)
-    register_file_tools(registry)
-    register_web_tools(registry)
-    register_system_tools(registry)
+
+    registry.add_module(builtin)
+    for tool_ in maak_geheugentools(memory):
+        registry.add(tool_)
 
     # OpenClaw en Hermes komen er alleen bij als ze bereikbaar zijn.
     uitbesteed = register_delegation_tools(registry)
@@ -44,7 +40,7 @@ def build_brain(confirm_func=None, backend: str | None = None):
     Geeft (brain, memory, registry) terug. `confirm_func(tool, args) -> bool`
     bepaalt hoe er om toestemming wordt gevraagd; standaard is dat de terminal.
     """
-    memory = MemoryManager()
+    memory = Memory()
     registry = build_registry(memory, confirm_func) if config.TOOLS_ENABLED else None
     brain = Brain(backend=backend, tools=registry, memory=memory)
     return brain, memory, registry

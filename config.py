@@ -1,4 +1,6 @@
 import os
+from pathlib import Path
+
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -70,6 +72,16 @@ CONFIRM_TIMEOUT = 60        # seconden wachten op goedkeuring in de HUD
 # Agent
 # ---------------------------------------------------------------------------
 TOOLS_ENABLED = os.getenv("TOOLS_ENABLED", "1") not in {"0", "false", "False"}
+
+# Waar de bestandstools mogen komen. Standaard je thuismap plus de projectmap
+# zelf — die laatste is nodig voor schermafbeeldingen en het geheugen, en valt
+# niet altijd onder je thuismap. Meerdere paden scheiden met een dubbele punt.
+FILE_ROOTS = [
+    p for p in (
+        os.getenv("FILE_ROOTS", "").split(os.pathsep)
+        or []
+    ) if p
+] or [str(Path.home()), str(Path(__file__).resolve().parent)]
 MAX_STEPS = 5               # tool-rondes per vraag
 
 
@@ -93,7 +105,11 @@ DELEGATE_CONFIRM = os.getenv("DELEGATE_CONFIRM", "1") not in {"0", "false", "Fal
 # ---------------------------------------------------------------------------
 WHISPER_MODEL = os.getenv("WHISPER_MODEL", "small")   # tiny|base|small|medium
 SAMPLE_RATE = 16000        # Whisper verwacht 16 kHz
-RECORD_SECONDS = 7
+
+# Opnemen stopt op stilte, niet op een vaste duur.
+MAX_OPNAME = float(os.getenv("MAX_OPNAME", "20"))        # harde bovengrens
+STILTE_NA = float(os.getenv("STILTE_NA", "0.9"))         # stilte die een zin afsluit
+WACHT_OP_SPRAAK = float(os.getenv("WACHT_OP_SPRAAK", "3"))  # geduld voor het eerste woord
 
 
 # ---------------------------------------------------------------------------
@@ -109,25 +125,21 @@ TTS_VOICE_INDEX = 0
 # ---------------------------------------------------------------------------
 # Wake word + sprekerherkenning
 # ---------------------------------------------------------------------------
-CHROMA_DB_PATH = "data/chroma_voiceprints"
-WAKE_WORD_MODEL = "hey_jarvis"
-WAKE_THRESHOLD = 0.80
-VOICEPRINT_PATH = "data/voiceprint.npy"
-SPEAKER_THRESHOLD = 0.55
-ENROLL_SECONDS = 6
-GREETING_STATE_PATH = "data/last_greeting.txt"
-VOICEPRINT_COLLECTION = "owner_voiceprint"
-ECAPA_MODEL_DIR = "data/ecapa_model"
-CONFIRM_LISTEN = 3
-ENROLL_SAMPLES = 5
+WAKE_WORD_MODEL = os.getenv("WAKE_WORD_MODEL", "hey_jarvis")
+WAKE_THRESHOLD = float(os.getenv("WAKE_THRESHOLD", "0.80"))
+
+VOICEPRINT_PATH = os.getenv("VOICEPRINT_PATH", "data/voiceprint.npz")
+SPEAKER_THRESHOLD = float(os.getenv("SPEAKER_THRESHOLD", "0.55"))
+ECAPA_MODEL_DIR = os.getenv("ECAPA_MODEL_DIR", "data/ecapa_model")
+ENROLL_SAMPLES = int(os.getenv("ENROLL_SAMPLES", "5"))
+
+GREETING_STATE_PATH = "data/laatste_groet.txt"
 
 
 # ---------------------------------------------------------------------------
 # Gespreksmodus
 # ---------------------------------------------------------------------------
-FOLLOWUP_ENABLED = True
-FOLLOWUP_WINDOW = 10
-FOLLOWUP_LISTEN = 7
+FOLLOWUP_ENABLED = os.getenv("FOLLOWUP_ENABLED", "1") not in {"0", "false", "False"}
 
 
 # ---------------------------------------------------------------------------

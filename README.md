@@ -120,11 +120,13 @@ zijn. Logboek: `journalctl --user -u jarvis-hud -f`.
 
 ```
 run_hud.py          entrypoint voor de HUD
-hud/                server, eventbus en de interface
-core/               providers, router, agent, permissies
-memory/             werk- · korte- · langetermijngeheugen
-tools/              toolregistry en tools
-voice/              wake word, STT, TTS, sprekerherkenning
+main.py             dezelfde agent, in de terminal
+hud/                server, eventbus en de holografische interface
+core/               providers, router, agent, permissies, assemblage
+memory/             store.py (blijvend, SQLite + FTS5) · working_memory.py
+tools/              registry.py (schema's uit de functie) · builtin · delegation
+voice/              listener · voiceprint · encoder · stt · tts · loop
+deploy/             systemd-units en installatiescript
 docs/               architectuur en roadmap
 ```
 
@@ -238,4 +240,4 @@ operator-toegang.
 
 ## 📜 Licentie
 
-MIT.
+MIT — zie [`LICENSE`](LICENSE).

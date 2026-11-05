@@ -33,7 +33,8 @@ class Agent:
     def build_messages(self, user_input: str, history: list[dict] | None = None,
                        memory_context: str | None = None) -> list[dict]:
         if memory_context is None and self.memory is not None:
-            memory_context = self.memory.build_memory_context()
+            # Alleen wat bij déze vraag past, niet het hele geheugen.
+            memory_context = self.memory.context_for(user_input)
 
         system = config.SYSTEM_PROMPT.format(
             owner=config.OWNER_NAME,
@@ -117,9 +118,9 @@ class Agent:
         antwoord = "".join(stukken).strip()
 
         if self.memory is not None:
-            self.memory.log_interaction("user", user_input)
+            self.memory.log("user", user_input)
             if antwoord:
-                self.memory.log_interaction("jarvis", antwoord)
+                self.memory.log("jarvis", antwoord)
         return antwoord
 
 

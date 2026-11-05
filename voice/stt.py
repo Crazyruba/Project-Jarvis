@@ -1,69 +1,56 @@
 """
 Spraak naar tekst met faster-whisper, lokaal op de CPU.
 
-De taal komt uit config.LANG. Nederlands is merkbaar lastiger dan Engels,
-dus het standaardmodel is `small` in plaats van `base`.
+De taal komt uit config.LANG. Nederlands is lastiger dan Engels, dus het
+standaardmodel is `small`; `medium` is merkbaar beter maar ook trager.
 """
 
+from __future__ import annotations
+
 import numpy as np
-import sounddevice as sd
-from faster_whisper import WhisperModel
 
 import config
 
+# Whisper verzint graag beleefdheden in een stilte. Dit zijn de uitkomsten
+# die we als "niets gezegd" behandelen in plaats van als opdracht.
+VERZINSELS = {
+    "ondertiteling door de amara.org gemeenschap",
+    "ondertitels ingediend door de amara.org gemeenschap",
+    "abonneer je op mijn kanaal",
+    "bedankt voor het kijken",
+    "dankjewel",
+    "thank you",
+    "thanks for watching",
+    "you",
+}
+
 
 class SpeechToText:
-    """Neemt op van de microfoon en zet dat lokaal om naar tekst."""
+    """Zet opgenomen audio lokaal om naar tekst."""
 
-    def __init__(self, model_name: str | None = None, language: str | None = None):
-        self.language = language or config.LANG
-        name = model_name or config.WHISPER_MODEL
-        print(f"🎤 Whisper laden ({name}, taal={self.language}) — eerste keer duurt dit even…")
-        # int8 houdt het licht op een CPU zonder GPU.
-        self.model = WhisperModel(name, device="cpu", compute_type="int8")
+    def __init__(self, model: str | None = None, taal: str | None = None):
+        from faster_whisper import WhisperModel
+
+        self.taal = taal or config.LANG
+        naam = model or config.WHISPER_MODEL
+        print(f"🎤 Whisper laden ({naam}, taal={self.taal}) — eerste keer duurt even…")
+        # int8 houdt het behapbaar op een CPU zonder GPU.
+        self.model = WhisperModel(naam, device="cpu", compute_type="int8")
         print("✅ Whisper klaar.")
 
-    def record(self, seconds: int | None = None, on_level=None) -> np.ndarray:
-        """Neem audio op. Met on_level gaat het niveau live naar het hologram."""
-        seconds = seconds or config.RECORD_SECONDS
-        print(f"🎙️  Luisteren, {seconds}s…")
-
-        if on_level is None:
-            audio = sd.rec(
-                int(seconds * config.SAMPLE_RATE),
-                samplerate=config.SAMPLE_RATE,
-                channels=1,
-                dtype="float32",
-            )
-            sd.wait()
-            return audio.flatten()
-
-        # Met niveaumeting: blokjes opnemen en per blokje de RMS doorgeven.
-        blocks = []
-        blocksize = int(config.SAMPLE_RATE * 0.08)      # 80 ms
-        with sd.InputStream(
-            samplerate=config.SAMPLE_RATE, channels=1,
-            dtype="float32", blocksize=blocksize,
-        ) as stream:
-            needed = int(seconds * config.SAMPLE_RATE)
-            gathered = 0
-            while gathered < needed:
-                block, _ = stream.read(blocksize)
-                block = block.flatten()
-                blocks.append(block)
-                gathered += len(block)
-                rms = float(np.sqrt(np.mean(block ** 2))) if block.size else 0.0
-                on_level(min(1.0, rms * 8))             # spraak zit rond 0,02-0,12
-        on_level(0.0)
-        return np.concatenate(blocks)[: int(seconds * config.SAMPLE_RATE)]
-
     def transcribe(self, audio: np.ndarray) -> str:
-        """Zet opgenomen audio om naar tekst."""
-        segments, _ = self.model.transcribe(audio, language=self.language)
-        return " ".join(seg.text for seg in segments).strip()
+        golf = np.asarray(audio, dtype="float32").ravel()
+        if golf.size < config.SAMPLE_RATE // 4:      # korter dan 0,25 s
+            return ""
 
-    def listen(self, seconds: int | None = None, on_level=None) -> str:
-        """Opnemen en transcriberen in één keer."""
-        audio = self.record(seconds, on_level=on_level)
-        print("🧠 Transcriberen…")
-        return self.transcribe(audio)
+        segmenten, _ = self.model.transcribe(
+            golf,
+            language=self.taal,
+            # Zonder dit plakt Whisper eerdere tekst aan een stille opname vast.
+            condition_on_previous_text=False,
+        )
+        tekst = " ".join(segment.text for segment in segmenten).strip()
+
+        if tekst.strip(" .,!?").lower() in VERZINSELS:
+            return ""
+        return tekst
