@@ -153,6 +153,9 @@ pip install -r requirements-dev.txt
 pytest
 ```
 
+`pytest.ini` zet de projectwortel op het pad en geeft elke test 60 seconden,
+zodat `pytest` vanuit elke map hetzelfde doet.
+
 Bewust een aparte lijst: de volledige `requirements.txt` trekt torch, chromadb
 en faster-whisper binnen — ruim een gigabyte die geen enkele test aanraakt. De
 zware modules worden pas in de spraaklus geladen.
