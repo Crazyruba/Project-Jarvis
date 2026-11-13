@@ -1,37 +1,63 @@
-from google.genai import types
+"""
+Werkgeheugen: het gesprek van deze sessie, in RAM.
+
+Berichten staan in de vorm die de modellen verwachten
+({"role": "user"|"assistant", "content": "…"}), zodat ze zo naar de backend
+kunnen. Voorheen stonden hier Gemini-objecten.
+"""
+
+from __future__ import annotations
 
 
 class WorkingMemory:
-    """The active conversation for THIS session (in RAM)."""
+    """Het lopende gesprek, afgekapt zodat het niet eindeloos groeit."""
 
     def __init__(self, max_turns: int = 20):
-        self.history = []          # list of types.Content
-        self.max_turns = max_turns # keep last N turns to control tokens
+        self.history: list[dict] = []
+        self.max_turns = max_turns
 
-    def add_user(self, text: str):
-        self.history.append(
-            types.Content(role="user", parts=[types.Part(text=text)])
-        )
+    # -- schrijven ---------------------------------------------------------
+    def add(self, role: str, content: str) -> None:
+        if not content:
+            return
+        self.history.append({"role": role, "content": content})
         self._trim()
 
-    def add_model(self, text: str):
-        self.history.append(
-            types.Content(role="model", parts=[types.Part(text=text)])
-        )
-        self._trim()
+    def add_user(self, text: str) -> None:
+        self.add("user", text)
 
-    def add_raw(self, content):
-        """For tool-call / tool-response Content objects."""
-        self.history.append(content)
-        self._trim()
+    def add_assistant(self, text: str) -> None:
+        self.add("assistant", text)
 
-    def get(self):
+    # Oude naam, toen het antwoord nog "model" heette.
+    add_model = add_assistant
+
+    # -- lezen -------------------------------------------------------------
+    def get(self) -> list[dict]:
         return self.history
 
-    def _trim(self):
-        # Keep the history from growing forever (protect token budget)
-        if len(self.history) > self.max_turns * 2:
-            self.history = self.history[-self.max_turns * 2:]
+    def recent(self, limit: int) -> list[dict]:
+        return self.history[-limit:] if limit else list(self.history)
 
-    def clear(self):
-        self.history = []
+    # -- onderhoud ---------------------------------------------------------
+    def _trim(self) -> None:
+        maximum = self.max_turns * 2        # vraag + antwoord per beurt
+        if len(self.history) > maximum:
+            self.history = self.history[-maximum:]
+
+    def clear(self) -> None:
+        self.history.clear()
+
+    # -- gedraagt zich als een lijst ---------------------------------------
+    def __len__(self) -> int:
+        return len(self.history)
+
+    def __iter__(self):
+        return iter(self.history)
+
+    def __getitem__(self, index):
+        return self.history[index]
+
+    def append(self, message: dict) -> None:
+        self.history.append(message)
+        self._trim()

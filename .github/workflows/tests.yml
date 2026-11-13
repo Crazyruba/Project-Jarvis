@@ -1,0 +1,120 @@
+name: tests
+
+on:
+  # Alleen main bij een push: een branch met een open pull request zou anders
+  # twee keer dezelfde commit draaien.
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Een nieuwe push maakt de vorige draai overbodig.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  pytest:
+    name: pytest (python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        # Oudste ondersteunde versie en de nieuwste.
+        python: ["3.11", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Versies tonen
+        run: python --version
+
+      - name: Afhankelijkheden installeren
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Tests draaien
+        # Instellingen (pythonpath, testpaths, timeout) staan in pytest.ini,
+        # zodat dit commando lokaal hetzelfde doet als hier.
+        run: pytest
+
+  requirements:
+    name: requirements oplosbaar (python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Kan requirements.txt opgelost worden?
+        # Dit vangt een afhankelijkheid die voor deze Python geen enkele
+        # installeerbare versie heeft. Precies dat ging mis met openwakeword,
+        # dat op Linux tflite-runtime eist terwijl daar geen wheels voor zijn.
+        # uv lost op zonder te downloaden, dus dit kost seconden in plaats van
+        # een torch-download.
+        #
+        # Wel naar een echt bestand schrijven: met `-o /dev/null` eindigt uv
+        # met exitcode 2, waarschijnlijk omdat het atomisch schrijft.
+        run: |
+          uv pip compile --python-version ${{ matrix.python }} \
+            requirements.txt -o resolved.txt
+          echo "  $(grep -c '^[a-zA-Z]' resolved.txt) pakketten opgelost"
+
+      - name: En requirements-dev.txt
+        run: |
+          uv pip compile --python-version ${{ matrix.python }} \
+            requirements-dev.txt -o resolved-dev.txt
+          echo "  $(grep -c '^[a-zA-Z]' resolved-dev.txt) pakketten opgelost"
+
+  frontend:
+    name: HUD-javascript
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Syntax van de HUD-scripts
+        # Alleen onze eigen scripts; three.js is meegeleverd en niet van ons.
+        run: |
+          for f in hud/static/js/*.js; do
+            echo "  $f"
+            node --check "$f"
+          done
+
+      - name: Verwijzingen in index.html bestaan ook echt
+        # Vangt een vergeten bestand, en ook een three.js die niet is
+        # meegecommit — de importmap wijst daarnaar.
+        run: |
+          ontbreekt=0
+          paden=$(grep -oE '"/static/[^"]+"' hud/static/index.html \
+                  | tr -d '"' | sed 's|^/static/||' | sort -u)
+          for pad in $paden; do
+            if [ -f "hud/static/$pad" ]; then
+              echo "  ✓ $pad"
+            else
+              echo "  ✗ $pad ontbreekt"; ontbreekt=1
+            fi
+          done
+          exit $ontbreekt

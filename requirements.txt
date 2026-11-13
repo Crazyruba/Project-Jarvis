@@ -1,16 +1,37 @@
-google-genai>=0.3.0 
+# --- HUD ---
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+openai>=1.40.0
+
+# --- Kern ---
 python-dotenv>=1.0.0
 requests>=2.31.0
-pyautogui>=0.9.54
+numpy>=1.24.0
+
+# --- Spraak ---
 faster-whisper>=1.0.0
 sounddevice>=0.4.6
 scipy>=1.11.0
-pyttsx3>=2.90
-numpy>=1.24.0
-openwakeword>=0.6.0
-resemblyzer>=0.1.1
-librosa>=0.10.0
-chromadb>=0.4.22
-resemblyzer>=0.1.1
-onnxruntime
-speechbrain
+piper-tts>=1.2.0
+pyttsx3>=2.90          # terugval als Piper-stem ontbreekt
+onnxruntime            # draait het wake word-model
+speechbrain            # ECAPA-TDNN voor sprekerherkenning
+
+# openwakeword staat hier bewust NIET bij.
+#
+# Het eist op Linux tflite-runtime, en daarvan bestaan geen wheels voor
+# recente Python-versies — terwijl JARVIS het model via ONNX draait en tflite
+# dus nergens voor gebruikt. Installeren zonder die eis:
+#
+#     pip install --no-deps openwakeword
+#
+# Of draai ./install.sh, dat doet beide stappen. Zonder openwakeword werkt
+# alles behalve "Hey Jarvis"; praten kan dan met de spatiebalk.
+#
+# Dit zijn de echte afhankelijkheden van openwakeword, die het via --no-deps
+# niet zelf meeneemt:
+tqdm>=4.0,<5.0
+scikit-learn>=1,<2
+
+# --- Tools ---
+pyautogui>=0.9.54

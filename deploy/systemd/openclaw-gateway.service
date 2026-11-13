@@ -1,0 +1,21 @@
+[Unit]
+Description=OpenClaw Gateway
+After=network-online.target
+Wants=network-online.target
+StartLimitBurst=10
+StartLimitIntervalSec=300
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/openclaw gateway --port 18789
+Restart=always
+RestartSec=5
+# 78 betekent "configuratie klopt niet" — dan heeft herstarten geen zin.
+RestartPreventExitStatus=78
+TimeoutStopSec=330
+TimeoutStartSec=30
+SuccessExitStatus=0 143
+KillMode=mixed
+
+[Install]
+WantedBy=default.target
